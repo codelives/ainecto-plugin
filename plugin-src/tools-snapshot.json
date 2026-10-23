@@ -431,6 +431,22 @@
       "readOnly": true
     },
     {
+      "name": "list_my_comments",
+      "args": [
+        "order",
+        "workspaceUuid",
+        "projectUuid",
+        "kind",
+        "resolved",
+        "since",
+        "until",
+        "target",
+        "limit",
+        "cursor"
+      ],
+      "readOnly": true
+    },
+    {
       "name": "list_notifications",
       "args": [
         "cursor",

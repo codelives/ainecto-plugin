@@ -27,6 +27,8 @@ See everything that is waiting for the signed-in AiNecto user in one pass, then 
    - Mentions and other notifications: `list_notifications(directOnly)` for items that point at the
      user directly.
    - The document behind an item: `get_document(uuid)` with the target uuid.
+   - The user's own comments and questions, such as questions they asked that are still open:
+     `list_my_comments(resolved)`.
    - "Me" (the user's own userId and display name): `identity_get_self`.
 3. **Report.** Group the result: questions and mentions waiting for an answer, cards waiting for
    acceptance, cards in progress or in review, blocked cards. Give each item its title and link, and
@@ -45,7 +47,7 @@ See everything that is waiting for the signed-in AiNecto user in one pass, then 
 
 | Read | Write (only on request) |
 |---|---|
-| `get_my_work_summary` · `list_agent_todos` · `list_notifications` · `kanban_list_cards` · `get_document` · `identity_get_self` | `update_agent_todos` · `mark_notifications_read` · `kanban_card_action` |
+| `get_my_work_summary` · `list_agent_todos` · `list_notifications` · `list_my_comments` · `kanban_list_cards` · `get_document` · `identity_get_self` | `update_agent_todos` · `mark_notifications_read` · `kanban_card_action` |
 
 ## Cautions
 
