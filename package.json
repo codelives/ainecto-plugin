@@ -1,0 +1,17 @@
+{
+  "name": "ainecto-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Source of the AiNecto plugin for Claude, Codex, ChatGPT, Cursor and Gemini CLI.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build-plugin.mjs",
+    "check": "node scripts/build-plugin.mjs --check",
+    "test": "node scripts/build-plugin.mjs --check && node --test test/*.test.mjs",
+    "snapshot-tools": "node scripts/snapshot-tools.mjs"
+  }
+}

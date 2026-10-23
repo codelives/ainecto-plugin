@@ -1,0 +1,641 @@
+{
+  "source": "AiNecto MCP tools/list (https://ainecto.com/mcp)",
+  "capturedAt": "2026-10-23",
+  "tools": [
+    {
+      "name": "create_comments",
+      "args": [
+        "documentUuid",
+        "cardUuid",
+        "items",
+        "mailLanguage"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "create_documents",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "create_folders",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "create_projects",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "create_workspaces",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "delete_attachments",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "delete_comments",
+      "args": [
+        "documentUuid",
+        "cardUuid",
+        "ids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "delete_documents",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "delete_folders",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "delete_projects",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "delete_workspaces",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "diagram_apply_changes",
+      "args": [
+        "diagramUuid",
+        "description",
+        "nodes",
+        "edges",
+        "groups"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "diagram_get_edge",
+      "args": [
+        "edgeUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_get_group",
+      "args": [
+        "groupUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_get_node",
+      "args": [
+        "nodeUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_get_pending_llm_requests",
+      "args": [],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_list_edges",
+      "args": [
+        "diagramUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_list_groups",
+      "args": [
+        "diagramUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_list_nodes",
+      "args": [
+        "diagramUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "diagram_submit_llm_result",
+      "args": [
+        "uuid",
+        "result",
+        "inputTokens",
+        "cachedInputTokens",
+        "outputTokens",
+        "creditsCharged"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "diagram_update_llm_request_status",
+      "args": [
+        "uuid",
+        "status",
+        "errorMessage"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "disable_shares",
+      "args": [
+        "targetType",
+        "targetUuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "enable_shares",
+      "args": [
+        "targetType",
+        "targetUuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "erd_apply_changes",
+      "args": [
+        "documentUuid",
+        "description",
+        "operations",
+        "arrangeNewTables"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "erd_arrange_tables",
+      "args": [
+        "documentUuid",
+        "full"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "erd_get_enum",
+      "args": [
+        "documentUuid",
+        "enumUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_get_ref",
+      "args": [
+        "documentUuid",
+        "refUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_get_table",
+      "args": [
+        "documentUuid",
+        "tableUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_get_table_group",
+      "args": [
+        "documentUuid",
+        "tableGroupUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_list_enums",
+      "args": [
+        "documentUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_list_refs",
+      "args": [
+        "documentUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_list_table_groups",
+      "args": [
+        "documentUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "erd_list_tables",
+      "args": [
+        "documentUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "get_attachment",
+      "args": [
+        "uuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "get_document",
+      "args": [
+        "uuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "get_my_work_summary",
+      "args": [
+        "workspaceUuids",
+        "projectUuids",
+        "projectUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "get_project",
+      "args": [
+        "uuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "get_version",
+      "args": [
+        "documentUuid",
+        "versionNumber"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "get_workspace",
+      "args": [
+        "uuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "identity_get_self",
+      "args": [],
+      "readOnly": true
+    },
+    {
+      "name": "identity_list_job_roles",
+      "args": [],
+      "readOnly": true
+    },
+    {
+      "name": "identity_update_job_profile",
+      "args": [
+        "code",
+        "title",
+        "areas"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "kanban_apply_changes",
+      "args": [
+        "boardUuid",
+        "operations",
+        "mailLanguage"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "kanban_card_action",
+      "args": [
+        "cardUuid",
+        "action",
+        "reason",
+        "assigneeUserId",
+        "responderIds",
+        "requesterUserId",
+        "expectedRevision",
+        "mailLanguage"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "kanban_list_cards",
+      "args": [
+        "boardUuid",
+        "status",
+        "cardUuids",
+        "cardKeys",
+        "relation",
+        "includeDone",
+        "projectUuid",
+        "cursor",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_agent_todos",
+      "args": [
+        "state",
+        "kinds",
+        "workspaceUuids",
+        "projectUuids",
+        "projectUuid",
+        "after",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_attachments",
+      "args": [
+        "projectUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_comments",
+      "args": [
+        "documentUuid",
+        "cardUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_documents",
+      "args": [
+        "projectUuid",
+        "folderUuid",
+        "type",
+        "q",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_folders",
+      "args": [
+        "projectUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_history",
+      "args": [
+        "workspaceUuid",
+        "projectUuid",
+        "resourceType",
+        "resourceUuid",
+        "kinds",
+        "actorType",
+        "before",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_mention_candidates",
+      "args": [
+        "documentUuid",
+        "cardUuid",
+        "query",
+        "cursor",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_notifications",
+      "args": [
+        "cursor",
+        "ack",
+        "kinds",
+        "workspaceUuids",
+        "projectUuids",
+        "projectUuid",
+        "directOnly",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_projects",
+      "args": [
+        "workspaceUuid",
+        "q",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_trash",
+      "args": [],
+      "readOnly": true
+    },
+    {
+      "name": "list_versions",
+      "args": [
+        "documentUuid"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_workspaces",
+      "args": [],
+      "readOnly": true
+    },
+    {
+      "name": "mark_notifications_read",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "markdown_append_document",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "markdown_generate_document",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "move_documents",
+      "args": [
+        "items",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "move_folders",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "move_projects",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "request_upload_token",
+      "args": [
+        "purpose",
+        "scopeJson",
+        "maxBytes",
+        "ttlSeconds"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "resolve_comments",
+      "args": [
+        "documentUuid",
+        "cardUuid",
+        "ids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "restore_versions",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "search_documents",
+      "args": [
+        "q",
+        "type",
+        "projectUuid",
+        "folderUuid",
+        "ownerUserId",
+        "lastEditorUserId",
+        "createdFrom",
+        "createdTo",
+        "updatedFrom",
+        "updatedTo",
+        "limit",
+        "offset"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "unarchive_documents",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "unarchive_folders",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "unarchive_projects",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "unarchive_workspaces",
+      "args": [
+        "uuids"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_agent_todos",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_comments",
+      "args": [
+        "documentUuid",
+        "cardUuid",
+        "items",
+        "mailLanguage"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_documents",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_folders",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_projects",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_workspaces",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "upload_attachments",
+      "args": [
+        "items"
+      ],
+      "readOnly": false
+    }
+  ]
+}

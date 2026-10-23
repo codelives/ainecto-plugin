@@ -1,0 +1,49 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "ainecto",
+  "version": "0.1.0",
+  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
+  "author": {
+    "name": "Codelive, Inc.",
+    "email": "contact@codelive.co.kr",
+    "url": "https://ainecto.com"
+  },
+  "homepage": "https://ainecto.com",
+  "repository": "https://github.com/codelives/ainecto-plugin",
+  "license": "UNLICENSED",
+  "keywords": [
+    "ainecto",
+    "mcp",
+    "project-memory",
+    "documents",
+    "kanban",
+    "erd",
+    "diagrams",
+    "collaboration"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "AiNecto",
+        "shortDescription": "Shared project memory for AI",
+        "longDescription": "AiNecto is shared project memory for people and AI agents. Your agent can see what is waiting for you (notifications, to-dos and assigned kanban cards), find and review documents with comments, run kanban cards through their workflow, set up workspaces and projects, and write status reports — all against the same workspaces, documents, ERDs, diagrams and boards your team uses on ainecto.com. Sign in once with your AiNecto account; what the agent may change is decided by your AiNecto permissions.",
+        "developerName": "Codelive, Inc.",
+        "category": "Productivity",
+        "capabilities": [
+          "Read",
+          "Write"
+        ],
+        "websiteURL": "https://ainecto.com",
+        "privacyPolicyURL": "https://ainecto.com/en/privacy/",
+        "termsOfServiceURL": "https://ainecto.com/en/terms/",
+        "defaultPrompt": [
+          "What is waiting for me in AiNecto?",
+          "Review the latest version of our design document and leave comments",
+          "Write a status report for this week's kanban board"
+        ],
+        "composerIcon": "./assets/icon.png",
+        "logo": "./assets/icon.png"
+      }
+    }
+  }
+}

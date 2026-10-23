@@ -1,0 +1,16 @@
+{
+  "name": "ainecto",
+  "owner": {
+    "name": "Codelive, Inc.",
+    "email": "contact@codelive.co.kr"
+  },
+  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
+  "plugins": [
+    {
+      "name": "ainecto",
+      "source": "./",
+      "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
+      "version": "0.1.0"
+    }
+  ]
+}
