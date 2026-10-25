@@ -29,6 +29,8 @@ import {
 
 const PANE = 'ainecto'
 const POLL_MS = 30_000
+const QUICK_RETRY_MS = 5_000
+const QUICK_RETRY_MAX = 6
 
 // Pane state. Module variables: lost on a reload, rebuilt by the next poll.
 let server = null
@@ -46,6 +48,7 @@ let tab = 'notifications'
 let replying = null
 let draft = ''
 let callSeq = 0
+let quickRetries = 0
 
 const TABS = [
   ['notifications', '알림', '1'],
@@ -90,7 +93,17 @@ async function loadSaved($) {
   notifications = Array.isArray(items) ? items : []
 }
 
-// Finds the user's AiNecto MCP server: the stored one, else from the session's tools, else by name.
+async function useServer($, name) {
+  server = name
+  await storeKey($, 'server', name)
+  const c = await $.store.get('cursor:' + name)
+  cursor = typeof c === 'string' ? c : null
+  const items = await $.store.get('items:' + name)
+  notifications = Array.isArray(items) ? items : []
+}
+
+// Finds the user's AiNecto MCP server: the stored one, else the one whose tools the session lists,
+// else the first known name that answers.
 async function findServer($) {
   if (server) return server
   let names = []
@@ -100,21 +113,26 @@ async function findServer($) {
     $.ui.log(`ainecto tool.list failed: ${err?.message ?? err}`, { to: 'debug' })
   }
   const picked = pickServer(names)
-  const tries = picked ? [picked] : SERVER_CANDIDATES
-  for (const name of tries) {
+  if (picked) {
+    await useServer($, picked)
+    return picked
+  }
+  for (const name of SERVER_CANDIDATES) {
     server = name
-    const r = await callTool($, 'get_my_work_summary', {})
-    if (r.ok) {
-      await storeKey($, 'server', name)
-      const c = await $.store.get('cursor:' + name)
-      cursor = typeof c === 'string' ? c : null
-      const items = await $.store.get('items:' + name)
-      notifications = Array.isArray(items) ? items : []
+    if ((await callTool($, 'get_my_work_summary', {})).ok) {
+      await useServer($, name)
       return name
     }
   }
   server = null
   return null
+}
+
+// MCP servers connect after the session starts, and a call can fail on a blip: retry soon a few times.
+function retrySoon($) {
+  if (quickRetries >= QUICK_RETRY_MAX) return
+  quickRetries += 1
+  $.clock.after(QUICK_RETRY_MS, () => poll($))
 }
 
 async function fetchList($) {
@@ -149,15 +167,19 @@ async function poll($) {
   try {
     if (!(await findServer($))) {
       error = 'AiNecto MCP 연결 없음'
+      retrySoon($)
       return
     }
     const r = await callTool($, 'get_my_work_summary', {})
     if (!r.ok) {
       error = '동기화 실패'
+      server = null // look the server up again next time (renamed, removed, or not connected yet)
+      retrySoon($)
       return
     }
     view = summaryView(r.data)
     error = null
+    quickRetries = 0
     const now = await $.clock.now()
     lastSyncAt = now
     if (shouldFetchList({ unread: view.unread, lastUnread, hasMore, now, retryAt })) await fetchList($)
@@ -276,7 +298,7 @@ export function register(on) {
 
     const counts = {
       notifications: view ? view.unread : 0,
-      comments: tabs.comments.length,
+      comments: tabs.comments.filter((r) => r.unread).length,
       work: view ? view.cardCounts.assignedOpen : 0,
     }
     const tabRow = Box({

@@ -225,3 +225,33 @@ test('with no AiNecto server the pane says how to connect', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /AiNecto MCP 연결 없음.*setup/ })).toBeDefined()
 })
+
+test('a server that connects after the session starts is picked up within seconds', async ($, on) => {
+  let connected = false
+  const clock = mock.clock(on, { now: 0 })
+  const calls: string[] = []
+  on('store.get', () => ({ value: undefined }))
+  on('store.set', () => ({ value: undefined }))
+  on('tool.list', () => ({
+    value: connected ? [{ name: 'mcp__ai-erd__get_my_work_summary', description: '', mcp: true }] : [],
+  }))
+  on('mcp.call', ($: any, e: any) => {
+    calls.push(`${e.server} ${e.tool}`)
+    if (!connected) return { deny: 'no connected MCP tool' }
+    if (e.tool === 'get_my_work_summary') return { value: res(summary(5)) }
+    return { value: res({ items: [], nextCursor: 't', hasMore: false }) }
+  })
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.log', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('command.register', () => ({ value: undefined }))
+  on('session.start', () => ({ cwd: '/work' }))
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+  await clock.advance(1)
+  connected = true
+  await clock.advance(5_000) // well before the 30-second poll
+  expect(calls).toContain('ai-erd get_my_work_summary')
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /안 읽음 5/ })).toBeDefined()
+})
