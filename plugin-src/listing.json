@@ -10,14 +10,18 @@
     "email": "contact@codelive.co.kr",
     "url": "https://ainecto.com"
   },
-  "homepage": "https://ainecto.com",
+  "homepage": "https://ainecto.com/en/",
+  "inflow": {
+    "medium": "referral",
+    "campaign": "agent-directory",
+    "source": { "agentPlugins": "chatgpt", "claude": "claude" }
+  },
   "repository": "https://github.com/codelives/ainecto-plugin",
   "license": "UNLICENSED",
   "keywords": ["ainecto", "mcp", "project-memory", "documents", "kanban", "erd", "diagrams", "collaboration"],
   "category": "Productivity",
   "capabilities": ["Read", "Write"],
   "urls": {
-    "website": "https://ainecto.com",
     "documentation": "https://ainecto.com/docs/get-started/connect-your-agent/",
     "support": "https://ainecto.com/contact/",
     "privacyPolicy": "https://ainecto.com/en/privacy/",

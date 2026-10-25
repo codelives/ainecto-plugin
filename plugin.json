@@ -8,7 +8,7 @@
     "email": "contact@codelive.co.kr",
     "url": "https://ainecto.com"
   },
-  "homepage": "https://ainecto.com",
+  "homepage": "https://ainecto.com/en/?utm_source=chatgpt&utm_medium=referral&utm_campaign=agent-directory",
   "repository": "https://github.com/codelives/ainecto-plugin",
   "license": "UNLICENSED",
   "keywords": [
@@ -33,7 +33,7 @@
           "Read",
           "Write"
         ],
-        "websiteURL": "https://ainecto.com",
+        "websiteURL": "https://ainecto.com/en/?utm_source=chatgpt&utm_medium=referral&utm_campaign=agent-directory",
         "privacyPolicyURL": "https://ainecto.com/en/privacy/",
         "termsOfServiceURL": "https://ainecto.com/en/terms/",
         "defaultPrompt": [

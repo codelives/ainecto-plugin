@@ -16,6 +16,20 @@ export function loadListing(root = ROOT) {
   return JSON.parse(readFileSync(join(root, LISTING_PATH), 'utf8'));
 }
 
+/**
+ * Pure: the homepage link one directory shows — homepage + the UTM fixed in the operations guide
+ * («외부 채널 추가 및 GA4 유입 분석 운영 가이드», KAN-212): medium/campaign shared, source per directory.
+ */
+export function inflowUrl(l, surface) {
+  const source = l.inflow.source[surface];
+  if (!source) throw new Error(`${LISTING_PATH}: inflow.source.${surface} is missing`);
+  const url = new URL(l.homepage);
+  url.searchParams.set('utm_source', source);
+  url.searchParams.set('utm_medium', l.inflow.medium);
+  url.searchParams.set('utm_campaign', l.inflow.campaign);
+  return url.toString();
+}
+
 /** Pure: listing -> { relativePath: manifestObject }. */
 export function renderManifests(l) {
   const author = { name: l.developer.name, email: l.developer.email, url: l.developer.url };
@@ -29,7 +43,7 @@ export function renderManifests(l) {
       version: l.version,
       description: l.description,
       author,
-      homepage: l.homepage,
+      homepage: inflowUrl(l, 'agentPlugins'),
       repository: l.repository,
       license: l.license,
       keywords: l.keywords,
@@ -42,7 +56,7 @@ export function renderManifests(l) {
             developerName: l.developer.name,
             category: l.category,
             capabilities: l.capabilities,
-            websiteURL: l.urls.website,
+            websiteURL: inflowUrl(l, 'agentPlugins'),
             privacyPolicyURL: l.urls.privacyPolicy,
             termsOfServiceURL: l.urls.termsOfService,
             defaultPrompt: l.defaultPrompts,
@@ -76,7 +90,7 @@ export function renderManifests(l) {
       version: l.version,
       description: l.description,
       author,
-      homepage: l.homepage,
+      homepage: inflowUrl(l, 'claude'),
       repository: l.repository,
       license: l.license,
       keywords: l.keywords,

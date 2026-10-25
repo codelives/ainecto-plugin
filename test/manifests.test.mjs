@@ -55,6 +55,15 @@ test('listing values satisfy platform limits', () => {
   assert.ok(isHttps(listing.homepage));
 });
 
+test('directory homepage links carry the guide UTM (KAN-212)', () => {
+  const expected = (source) =>
+    `https://ainecto.com/en/?utm_source=${source}&utm_medium=referral&utm_campaign=agent-directory`;
+  const agentPlugins = read('plugin.json');
+  assert.equal(agentPlugins.homepage, expected('chatgpt'));
+  assert.equal(agentPlugins.extensions['com.openai'].interface.websiteURL, expected('chatgpt'));
+  assert.equal(read('.claude-plugin/plugin.json').homepage, expected('claude'));
+});
+
 test('icon is a square PNG of at least 512px inside the plugin', () => {
   const abs = join(ROOT, listing.icon);
   assert.ok(listing.icon.startsWith('./assets/'));
