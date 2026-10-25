@@ -428,6 +428,30 @@ export function readThrough(page) {
   return latest > mine ? latest : null;
 }
 
+/**
+ * How often the open conversation is read while nobody else in the room can signal this pane (user-approved
+ * 2026-10-25): people in different claude.ai organizations or personal accounts each run their own artifact, so no
+ * room joins them. Reads only while the conversation is on screen; room signals take over when someone is there.
+ */
+export const ALONE_POLL_MS = 5_000;
+
+/**
+ * Whether the pane must read the open conversation on its own (every ALONE_POLL_MS): there is no room, it is not
+ * connected, or nobody else in it has this conversation open (presence `viewing`). Agents and the viewer's own tabs
+ * do not count: they send no signal for someone else's message.
+ */
+export function readsAlone({ hasRoom, connected, peers, conversationUuid }) {
+  if (!conversationUuid) return false;
+  if (!hasRoom || !connected) return true;
+  return !(peers ?? []).some((p) => p && !p.isMe && p.kind !== 'agent' && p.presence?.viewing === conversationUuid);
+}
+
+/** The read the pane makes on its own: the messages after the last one shown (the latest page when none is shown). */
+export function aloneReadArgs(conversationUuid, shown) {
+  const last = (shown ?? []).reduce((n, m) => Math.max(n, Number(m.seq)), 0);
+  return last > 0 ? { conversationUuid, afterSeq: last, limit: MESSAGE_PAGE } : { conversationUuid, limit: MESSAGE_PAGE };
+}
+
 /** A room signal for a stored message (no body, no name: only which conversation and which seq). */
 export function signalOf(conversationUuid, seq, kind = 'new') {
   return { c: String(conversationUuid), s: Number(seq), k: kind };

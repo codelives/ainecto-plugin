@@ -41,21 +41,29 @@ function published(body) {
 
 const playwright = await loadPlaywright();
 
-test('artifact page: room send → signal → re-read, a new chat, a card to the AI — at 400px with no console errors', { skip: !playwright && 'playwright not found (set AINECTO_PLAYWRIGHT_FROM)' }, async () => {
+/** The exported page in a 400px Chromium page with the stand-in runtime; `problems` collects console errors. */
+async function openPanel(browser, { clock = false } = {}) {
+  const context = await browser.newContext({ viewport: { width: WIDTH, height: 760 } });
+  const page = await context.newPage();
+  const problems = [];
+  page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  if (clock) await page.clock.install();
+  await page.addInitScript((p) => (window.__FAKE_PROJECT__ = p), PROJECT);
+  await page.addInitScript({ path: join(ROOT, 'test/fixtures/fake-artifact-runtime.js') });
+  // Served from a URL (not setContent) so the init scripts run before the page, as the runtime's do.
+  const html = published(exportPage(buildArtifact().html, PROJECT));
+  await page.route('https://artifact.test/', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
+  await page.goto('https://artifact.test/');
+  return { page, problems, fake: (fn, arg) => page.evaluate(fn, arg) };
+}
+
+const SKIP = !playwright && 'playwright not found (set AINECTO_PLAYWRIGHT_FROM)';
+
+test('artifact page: room send → signal → re-read, a new chat, a card to the AI — at 400px with no console errors', { skip: SKIP }, async () => {
   const browser = await playwright.chromium.launch();
   try {
-    const context = await browser.newContext({ viewport: { width: WIDTH, height: 760 } });
-    const page = await context.newPage();
-    const problems = [];
-    page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
-    page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-    await page.addInitScript((p) => (window.__FAKE_PROJECT__ = p), PROJECT);
-    await page.addInitScript({ path: join(ROOT, 'test/fixtures/fake-artifact-runtime.js') });
-    // Served from a URL (not setContent) so the init scripts run before the page, as the runtime's do.
-    const html = published(exportPage(buildArtifact().html, PROJECT));
-    await page.route('https://artifact.test/', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
-    await page.goto('https://artifact.test/');
-    const fake = (fn, arg) => page.evaluate(fn, arg);
+    const { page, problems, fake } = await openPanel(browser);
     const noOverflow = async (where) => {
       const w = await page.evaluate(() => document.documentElement.scrollWidth);
       assert.ok(w <= WIDTH, `${where}: page is ${w}px wide at ${WIDTH}px`);
@@ -199,6 +207,70 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     // The panel never acknowledged or moved the agent's notification position.
     const acks = await fake(() => window.__fake.calls.filter((c) => c.tool === 'list_notifications' && (c.input.ack || c.input.cursor)));
     assert.deepEqual(acks, []);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artifact page: alone, the open room is read every 5 s — stops when someone has it open, when hidden, on rate_limited', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    const { page, problems, fake } = await openPanel(browser, { clock: true });
+    await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+    await page.clock.pauseAt(Date.now() + 1000);
+    // reads the pane makes on its own: callTool (not a watch) of the open conversation
+    const aloneReads = () => fake(() => window.__fake.calls.filter((c) => c.tool === 'conversation_get_messages' && !c.watch).length);
+    const room = await fake(() => window.__fake.ROOM);
+
+    // Alone in the room: one read every 5 s, of the messages after the last one shown.
+    let n = await aloneReads();
+    await page.clock.runFor(5_000);
+    assert.equal(await aloneReads(), n + 1);
+    await page.clock.runFor(10_000);
+    assert.equal(await aloneReads(), n + 3);
+    const last = await fake(() => window.__fake.calls.filter((c) => c.tool === 'conversation_get_messages' && !c.watch).at(-1).input);
+    assert.equal(last.conversationUuid, room);
+    assert.ok(last.afterSeq >= 2, 'only what came after the last shown message');
+    // A message stored elsewhere shows within one tick, no signal needed.
+    await fake(() => window.__fake.serverMessage(window.__fake.ROOM, window.__fake.EDWIN, '다른 계정에서 보낸 메시지'));
+    await page.clock.runFor(5_000);
+    await page.getByText('다른 계정에서 보낸 메시지').waitFor();
+
+    // Someone else opens this room in the artifact: signals take over, the 5-second reads stop.
+    const other = { peer: 'p2', by: 'claude-edwin', isMe: false, sameTab: false, kind: 'viewer', guest: false, presence: { viewing: room }, updatedAt: 0 };
+    await fake((p) => window.__fake.peers([p]), other);
+    n = await aloneReads();
+    await page.clock.runFor(20_000);
+    assert.equal(await aloneReads(), n, 'no reads alone while someone can signal');
+    // They leave: back to reading alone.
+    await fake(() => window.__fake.peers([]));
+    await page.clock.runFor(5_000);
+    assert.equal(await aloneReads(), n + 1);
+
+    // Hidden: stops; visible again: one read at once, then every 5 s.
+    const setVisibility = (state) =>
+      fake((v) => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => v });
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, state);
+    await setVisibility('hidden');
+    n = await aloneReads();
+    await page.clock.runFor(20_000);
+    assert.equal(await aloneReads(), n, 'no reads while hidden');
+    await setVisibility('visible');
+    await page.clock.runFor(10);
+    assert.equal(await aloneReads(), n + 1, 'one read on return');
+    await page.clock.runFor(5_000);
+    assert.equal(await aloneReads(), n + 2);
+
+    // rate_limited: the 5-second reads stop for good (the 30-second watch goes on).
+    await fake(() => window.__fake.failReads('rate_limited'));
+    await page.clock.runFor(5_000);
+    n = await aloneReads();
+    await fake(() => window.__fake.failReads(null));
+    await page.clock.runFor(30_000);
+    assert.equal(await aloneReads(), n, 'stopped after rate_limited, never tightened');
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();

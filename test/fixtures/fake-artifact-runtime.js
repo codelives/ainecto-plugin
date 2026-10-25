@@ -122,7 +122,7 @@
 
   // Send controls for the test: hold the answer to conversation_send (stored at once, answered on release),
   // or fail the next sends before they are stored (server_unavailable).
-  const sendControl = { held: null, failures: 0 };
+  const sendControl = { held: null, failures: 0, readFailure: null };
   async function run(tool, input) {
     await Promise.resolve();
     if (tool === 'conversation_send' && sendControl.failures > 0) {
@@ -146,7 +146,11 @@
   const mcp = Object.freeze({
     listTools: async () => ({ servers: [{ server: 'AiNecto dev', authStatus: 'connected', tools: Object.keys(tools).map((name) => ({ name, description: '' })) }] }),
     callTool: async (server, tool, input, opts) => {
-      calls.push({ tool, input, opts: opts ?? null });
+      calls.push({ tool, input, opts: opts ?? null, at: Date.now() });
+      if (tool === 'conversation_get_messages' && sendControl.readFailure) {
+        const code = sendControl.readFailure;
+        throw { code, message: code, retryable: code === 'rate_limited' || code === 'server_unavailable', retryAfterMs: 1000 };
+      }
       return run(tool, input);
     },
     watchTool: (server, tool, input, handler, opts) => {
@@ -228,6 +232,8 @@
       sendControl.held = null;
     },
     failNext: (n = 1) => (sendControl.failures = n),
+    /** Every conversation_get_messages callTool fails with this code from now on (null: answer again). */
+    failReads: (code) => (sendControl.readFailure = code),
     peers: (list) => listeners.peers.forEach((fn) => fn({ peers: list, joined: [], left: [], updated: list })),
   };
 })();

@@ -14,10 +14,12 @@
 //   canSendToClaude?() → Promise<boolean>          whether «AI에게» can go through right now
 //   sendToClaude?(ctx) → Promise<string>           hands contextForClaude(...) to the viewer's AI; called synchronously
 //                                                  from the click (the artifact runtime proves the gesture from it)
-//   room?: { emit(data), on(fn), onReconnect(fn), presence(patch), onPeers(fn), names(ids) → Promise<{[id]: name}> }
+//   room?: { emit(data), on(fn), onConnection(fn(connected)), presence(patch), onPeers(fn), names(ids) → Promise<{[id]: name}> }
 //   managePermissions?()                           opens the host's permission settings
 // }
 // Without watch the panel reads again every POLL_MS while it is shown (MCP Apps give a panel no live reads).
+// While nobody in the room can signal it (no room, not connected, or nobody else has the conversation open —
+// readsAlone), the open conversation is also read every ALONE_POLL_MS while shown; an error stops that for good.
 //
 // Rules this file keeps:
 // - The server is the truth for messages. A room signal carries only {conversation, seq} and is sent after the
@@ -29,6 +31,8 @@
 //   conversation is on screen with unread messages), mark_notifications_read.
 import {
   ALERT_PAGE,
+  ALONE_POLL_MS,
+  aloneReadArgs,
   alertCards,
   clockKo,
   contextForClaude,
@@ -47,6 +51,7 @@ import {
   POLL_MS,
   readLabel,
   readThrough,
+  readsAlone,
   signalOf,
   tabCounts,
   typingIn,
@@ -88,6 +93,12 @@ let canAsk = false;
 let banner = null; // { text, error, action?: [label, fn] }
 let syncedAt = null;
 let callSeq = 0;
+let roomConnected = false;
+let roomPeers = [];
+let aloneTimer = null;
+let aloneOff = false; // a failed read stopped the 5-second reads for this page load (watch reads go on)
+let aloneRetried = false;
+let aloneBusy = false;
 let pending = []; // messages sent from this pane and not yet shown from the server: { id, key, body, state, args, … }
 let popoverOpen = false;
 let stopMessages = null;
@@ -198,16 +209,19 @@ function followConversation() {
   stopMessages = null;
   messages = [];
   page = null;
+  host.room?.presence({ viewing: c, typingIn: null }).catch?.(() => {});
+  updateAloneReads();
   if (!c) return;
   stopMessages = subscribe('conversation_get_messages', messageArgs(c), (data) => useMessages(c, data), (err) => {
     showError(err, '메시지를 읽지 못했습니다');
   });
 }
 
-async function useMessages(c, data) {
+/** Every read of the open conversation lands here: the watch, the reads alone (`after` set), a re-read on a signal. */
+async function useMessages(c, data, { after = false } = {}) {
   if (c !== shownConversationUuid()) return;
   const incoming = Array.isArray(data?.messages) ? data.messages : [];
-  const gap = messageGap(messages, incoming, data?.hasMore);
+  const gap = after ? null : messageGap(messages, incoming, data?.hasMore);
   messages = mergeMessages(messages, incoming);
   page = { conversationUuid: c, type: data?.type, latestSeq: data?.latestSeq, myLastReadSeq: data?.myLastReadSeq };
   passOn([{ conversationUuid: c, latestSeq: data?.latestSeq }]);
@@ -221,6 +235,53 @@ async function useMessages(c, data) {
     }
   }
   markSeen(c);
+}
+
+// ── Reading alone: nobody in the room will signal this pane ──
+
+function aloneWanted() {
+  return (
+    !stopped &&
+    !aloneOff &&
+    Boolean(projectUuid) &&
+    document.visibilityState !== 'hidden' &&
+    readsAlone({ hasRoom: Boolean(host.room), connected: roomConnected, peers: roomPeers, conversationUuid: shownConversationUuid() })
+  );
+}
+
+/** Starts or stops the reads alone to match aloneWanted(). */
+function updateAloneReads() {
+  const wanted = aloneWanted();
+  if (wanted && !aloneTimer) {
+    aloneTimer = setInterval(readAlone, ALONE_POLL_MS);
+    console.info(`[ainecto-panel] reading alone every ${ALONE_POLL_MS}ms`);
+  } else if (!wanted && aloneTimer) {
+    clearInterval(aloneTimer);
+    aloneTimer = null;
+    console.info('[ainecto-panel] reading alone stopped');
+  }
+}
+
+async function readAlone() {
+  const c = shownConversationUuid();
+  if (!c || !page || aloneBusy || !aloneWanted()) return;
+  aloneBusy = true;
+  const r = await callTool('conversation_get_messages', aloneReadArgs(c, messages));
+  aloneBusy = false;
+  if (r.ok) {
+    aloneRetried = false;
+    useMessages(c, r.data, { after: true });
+    return;
+  }
+  // One more try on the next tick for a retryable failure; anything else (or a second failure, or a rate limit)
+  // stops the 5-second reads for this page load — the 30-second watch goes on.
+  if (r.retryable && r.code !== 'rate_limited' && !aloneRetried) {
+    aloneRetried = true;
+    return;
+  }
+  aloneOff = true;
+  console.info(`[ainecto-panel] reading alone off after ${r.code ?? 'error'}`);
+  updateAloneReads();
 }
 
 /** The viewer sees the conversation: move their read position (and the notifications it covers). */
@@ -484,7 +545,6 @@ function onConversationChange() {
   followConversation();
   const key = draftKey();
   $('compose-input').value = key ? loadDraft(key) : '';
-  host.room?.presence({ typingIn: null, viewing: shownConversationUuid() }).catch?.(() => {});
   render();
   updateCanAsk();
 }
@@ -726,7 +786,12 @@ function wire() {
     }
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible') return;
+    if (document.visibilityState !== 'visible') {
+      updateAloneReads();
+      return;
+    }
+    if (aloneWanted()) readAlone();
+    updateAloneReads();
     const c = shownConversationUuid();
     if (c) markSeen(c);
     updateCanAsk();
@@ -791,13 +856,18 @@ export async function startPanel(theHost) {
   if (self.ok) me = { userId: self.data?.userId, displayName: self.data?.displayName };
   else showError(self, '내 정보를 읽지 못했습니다');
   host.room?.on(onSignal);
-  host.room?.onReconnect(() => {
-    if (!projectUuid) return;
+  host.room?.onConnection((connected) => {
+    const reconnected = connected && roomConnected === false && projectUuid;
+    roomConnected = connected;
+    updateAloneReads();
+    if (!reconnected) return;
     refresh('conversation_list', listArgs());
     const c = shownConversationUuid();
     if (c) refresh('conversation_get_messages', messageArgs(c));
   });
   host.room?.onPeers(async (peers) => {
+    roomPeers = peers;
+    updateAloneReads();
     const ids = typingIn(peers, shownConversationUuid());
     const names = ids.length && host.room.names ? await host.room.names(ids) : {};
     typingNames = ids.map((id) => names[id] || '누군가');

@@ -3,6 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ALONE_POLL_MS,
+  aloneReadArgs,
+  readsAlone,
   alertCard,
   alertCards,
   clockKo,
@@ -233,4 +236,23 @@ test('pendingShown: a sending bubble hides once the server shows the same messag
   assert.deepEqual(pendingShown(sending, [...one, msg(9, ME, { body: '안녕하세요' })], ME), []);
   assert.deepEqual(pendingShown(sending, [msg(8, OTHER, { body: '안녕하세요' })], ME).length, 2, 'someone else saying the same is not it');
   assert.deepEqual(pendingShown([{ id: 'c', body: 'x', afterSeq: 99, messageUuid: 'm-3' }], [msg(3, ME, { body: 'x' })], ME), [], 'or by messageUuid');
+});
+
+test('readsAlone: read every 5 s only when nobody in the room can signal this conversation', () => {
+  assert.equal(ALONE_POLL_MS, 5000);
+  const viewing = (c, extra = {}) => ({ peer: 'p', by: 'u', isMe: false, kind: 'viewer', presence: { viewing: c }, ...extra });
+  const base = { hasRoom: true, connected: true, conversationUuid: ROOM };
+  assert.equal(readsAlone({ ...base, peers: [] }), true, 'nobody here');
+  assert.equal(readsAlone({ ...base, peers: [viewing(ROOM)] }), false, 'someone has it open: signals arrive');
+  assert.equal(readsAlone({ ...base, peers: [viewing(CHAT)] }), true, 'someone here, but in another conversation');
+  assert.equal(readsAlone({ ...base, peers: [viewing(ROOM, { isMe: true })] }), true, 'my other tab does not count');
+  assert.equal(readsAlone({ ...base, peers: [viewing(ROOM, { kind: 'agent' })] }), true, 'an agent does not count');
+  assert.equal(readsAlone({ ...base, connected: false, peers: [viewing(ROOM)] }), true, 'disconnected');
+  assert.equal(readsAlone({ ...base, hasRoom: false, peers: [] }), true, 'no room (another organization or account)');
+  assert.equal(readsAlone({ ...base, conversationUuid: null, peers: [] }), false, 'nothing open');
+});
+
+test('aloneReadArgs: only what came after the last shown message', () => {
+  assert.deepEqual(aloneReadArgs(ROOM, [msg(3), msg(9)]), { conversationUuid: ROOM, afterSeq: 9, limit: 50 });
+  assert.deepEqual(aloneReadArgs(ROOM, []), { conversationUuid: ROOM, limit: 50 });
 });

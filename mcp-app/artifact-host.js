@@ -53,13 +53,7 @@ export function roomBridge(room, user, log = () => {}) {
   return {
     emit: (data) => quiet(room.emit(SIGNAL_TOPIC, data)),
     on: (fn) => room.on(SIGNAL_TOPIC, (msg) => fn(msg?.data), (e) => log(`room listener ended: ${e.code}`)),
-    onReconnect(fn) {
-      let was = null;
-      return room.onConnection((connected) => {
-        if (connected && was === false) fn();
-        was = connected;
-      });
-    },
+    onConnection: (fn) => room.onConnection(fn),
     presence: (patch) => quiet(room.presence(patch)),
     onPeers: (fn) => room.onPeers((change) => fn(change.peers)),
     async names(ids) {

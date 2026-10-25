@@ -244,7 +244,7 @@ function fakeRoom() {
   };
 }
 
-test('artifact host: room signals on one topic, reconnects re-read, names come from user profiles', async () => {
+test('artifact host: room signals on one topic, connection state passed through, names come from user profiles', async () => {
   const room = fakeRoom();
   const user = { profiles: async (ids) => Object.fromEntries(ids.map((id) => [id, { id, name: id === 'u1' ? 'Edwin' : '' }])) };
   const bridge = roomBridge(room, user);
@@ -254,12 +254,11 @@ test('artifact host: room signals on one topic, reconnects re-read, names come f
   bridge.on((data) => heard.push(data));
   room.log.listeners.conv({ topic: 'conv', data: { c: 'c1', s: 4, k: 'new' }, isMe: false });
   assert.deepEqual(heard, [{ c: 'c1', s: 4, k: 'new' }]);
-  let reconnects = 0;
-  bridge.onReconnect(() => reconnects++);
+  const states = [];
+  bridge.onConnection((c) => states.push(c));
   room.log.connection(false);
   room.log.connection(true);
-  room.log.connection(true);
-  assert.equal(reconnects, 1, 'only a false → true edge');
+  assert.deepEqual(states, [false, true]);
   assert.deepEqual(await bridge.names(['u1', 'u2']), { u1: 'Edwin', u2: '' });
   assert.deepEqual(await roomBridge(room, null).names(['u1']), {});
 });
