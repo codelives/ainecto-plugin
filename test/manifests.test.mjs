@@ -23,6 +23,7 @@ test('the generator covers exactly the committed manifest set', () => {
     'gemini-extension.json',
     'mcp.json',
     'plugin.json',
+    'plugins/ainecto-panel/.claude-plugin/plugin.json',
   ]);
 });
 
@@ -76,6 +77,7 @@ test('Claude manifests have the fields the directory reads', () => {
   assert.ok(m.name && m.owner?.name && Array.isArray(m.plugins));
   assert.equal(m.plugins[0].name, p.name);
   assert.equal(m.plugins[0].source, './');
+  assert.deepEqual(m.plugins.map((x) => x.name), [listing.name, listing.panel.name]);
   const mcp = read('.mcp.json').mcpServers[listing.mcp.serverName];
   assert.deepEqual(mcp, { type: 'http', url: listing.mcp.url });
   assert.ok(!existsSync(join(ROOT, 'bin')), 'claude.ai and Cowork refuse plugins with a root bin/');
@@ -120,4 +122,23 @@ test('README install commands use the listing values', () => {
   ]) {
     assert.ok(readme.includes(needle), `README.md should contain: ${needle}`);
   }
+});
+
+test('the Claude Code pane plugin: its own manifest, a hooks module, listed in the Claude marketplace only', () => {
+  const panel = listing.panel;
+  const dir = panel.path.slice(2);
+  assert.match(panel.name, /^[a-z0-9]+(-[a-z0-9]+)*$/);
+  assert.ok(!/^(claude|anthropic)/.test(panel.name));
+  assert.notEqual(panel.name, listing.name, 'a mod tool is mcp__<plugin>__*: the name must not be the MCP server name');
+  assert.match(panel.version, /^\d+\.\d+\.\d+$/);
+  const p = read(`${dir}/.claude-plugin/plugin.json`);
+  assert.equal(p.name, panel.name);
+  assert.equal(p.version, panel.version);
+  assert.ok(!('mcpServers' in p), 'the pane uses the connection the user already has');
+  const hooks = read(`${dir}/hooks/hooks.json`);
+  assert.equal(hooks.modules.length, 1);
+  assert.ok(existsSync(join(ROOT, dir, 'hooks', hooks.modules[0])));
+  const entry = read('.claude-plugin/marketplace.json').plugins.find((x) => x.name === panel.name);
+  assert.deepEqual(entry, { name: panel.name, source: panel.path, description: panel.description, version: panel.version });
+  assert.ok(!read('.agents/plugins/marketplace.json').plugins.some((x) => x.name === panel.name), 'mods run only in Claude Code');
 });

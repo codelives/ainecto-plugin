@@ -1,0 +1,27 @@
+{
+  "name": "ainecto-panel",
+  "displayName": "AiNecto Panel",
+  "version": "0.1.0",
+  "description": "A Claude Code pane for AiNecto: your notifications, comments you can reply to, and your kanban work, beside the conversation. Uses your existing AiNecto connection.",
+  "author": {
+    "name": "Codelive, Inc.",
+    "email": "contact@codelive.co.kr",
+    "url": "https://ainecto.com"
+  },
+  "homepage": "https://ainecto.com",
+  "repository": "https://github.com/codelives/ainecto-plugin",
+  "license": "UNLICENSED",
+  "keywords": [
+    "ainecto",
+    "mcp",
+    "project-memory",
+    "documents",
+    "kanban",
+    "erd",
+    "diagrams",
+    "collaboration"
+  ],
+  "supportUrl": "https://ainecto.com/contact/",
+  "privacyPolicyUrl": "https://ainecto.com/en/privacy/",
+  "termsOfServiceUrl": "https://ainecto.com/en/terms/"
+}

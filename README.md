@@ -71,6 +71,15 @@ gemini extensions install https://github.com/codelives/ainecto-plugin
 
 Then run `/mcp auth ainecto` in Gemini CLI if it asks you to sign in.
 
+### AiNecto Panel for Claude Code
+
+`ainecto-panel` is a second, Claude Code-only plugin in the same marketplace: a pane beside the
+conversation with your notifications, comments you can reply to, and your kanban work. It uses the AiNecto
+connection you already have and adds no MCP server. Unlike the `ainecto` plugin it runs code inside
+Claude Code (a [mod](https://code.claude.com/docs/en/plugins/mods/overview)); see
+[plugins/ainecto-panel/README.md](plugins/ainecto-panel/README.md) for what it reads and writes, and how
+to install it.
+
 ### Already connected with `npx ainecto setup`?
 
 The [AiNecto CLI](https://github.com/codelives/ainecto) `setup` command registers the same server under
@@ -83,8 +92,8 @@ CLI's entries with `npx -y ainecto@latest setup --undo` before installing the pl
 - Terms of service: https://ainecto.com/en/terms/
 - Support: https://ainecto.com/contact/ (contact@codelive.co.kr)
 
-The plugin runs no code on your machine — it holds only skill instructions and the address
-of the AiNecto MCP server. Your agent talks to AiNecto with the account you sign in with; AiNecto
+The `ainecto` plugin runs no code on your machine — it holds only skill instructions and the address
+of the AiNecto MCP server. (`ainecto-panel` does run code inside Claude Code; its README says what.) Your agent talks to AiNecto with the account you sign in with; AiNecto
 handles that data under the privacy policy above.
 
 ## Repository layout
@@ -100,6 +109,7 @@ plugin.json, mcp.json              generated — Agent Plugins 1.0 (Codex, ChatG
 .claude-plugin/marketplace.json    generated — Claude marketplace
 .mcp.json                          generated — Claude
 gemini-extension.json              generated — Gemini CLI
+plugins/ainecto-panel/             the Claude Code pane (a mod); its plugin.json is generated from listing.json `panel`
 scripts/build-plugin.mjs           the generator
 schemas/agent-plugins-1.0.0/       the official Agent Plugins schemas, vendored for the tests
 ```
@@ -110,7 +120,8 @@ Requires Node.js 20 or later; there are no dependencies to install.
 
 ```bash
 npm run build      # regenerate every manifest from plugin-src/listing.json
-npm test           # build --check, manifest schema checks, and skill checks
+npm test           # build --check, manifest schema checks, skill checks, and the pane's data rules
+npm run test:panel # the pane's mod tests (claude plugin test)
 ```
 
 Never edit a generated manifest by hand: change `plugin-src/listing.json` and run `npm run build`.

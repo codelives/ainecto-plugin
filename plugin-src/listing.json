@@ -36,5 +36,12 @@
   "marketplace": {
     "name": "ainecto",
     "displayName": "AiNecto"
+  },
+  "panel": {
+    "name": "ainecto-panel",
+    "displayName": "AiNecto Panel",
+    "version": "0.1.0",
+    "description": "A Claude Code pane for AiNecto: your notifications, comments you can reply to, and your kanban work, beside the conversation. Uses your existing AiNecto connection.",
+    "path": "./plugins/ainecto-panel"
   }
 }

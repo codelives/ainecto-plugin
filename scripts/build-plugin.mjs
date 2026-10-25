@@ -20,6 +20,7 @@ export function loadListing(root = ROOT) {
 export function renderManifests(l) {
   const author = { name: l.developer.name, email: l.developer.email, url: l.developer.url };
   const server = l.mcp.serverName;
+  const panel = l.panel;
 
   return {
     // Agent Plugins 1.0 (Codex, ChatGPT, Cursor and other Agent Plugins clients)
@@ -90,7 +91,25 @@ export function renderManifests(l) {
       name: l.marketplace.name,
       owner: { name: l.developer.name, email: l.developer.email },
       description: l.description,
-      plugins: [{ name: l.name, source: './', description: l.description, version: l.version }],
+      plugins: [
+        { name: l.name, source: './', description: l.description, version: l.version },
+        { name: panel.name, source: panel.path, description: panel.description, version: panel.version },
+      ],
+    },
+    // Claude Code only: the AiNecto pane (a mod). Its code lives beside this manifest.
+    [`${panel.path.slice(2)}/.claude-plugin/plugin.json`]: {
+      name: panel.name,
+      displayName: panel.displayName,
+      version: panel.version,
+      description: panel.description,
+      author,
+      homepage: l.homepage,
+      repository: l.repository,
+      license: l.license,
+      keywords: l.keywords,
+      supportUrl: l.urls.support,
+      privacyPolicyUrl: l.urls.privacyPolicy,
+      termsOfServiceUrl: l.urls.termsOfService,
     },
     '.mcp.json': {
       mcpServers: { [server]: { type: 'http', url: l.mcp.url } },

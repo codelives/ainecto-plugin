@@ -11,6 +11,12 @@
       "source": "./",
       "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
       "version": "0.1.0"
+    },
+    {
+      "name": "ainecto-panel",
+      "source": "./plugins/ainecto-panel",
+      "description": "A Claude Code pane for AiNecto: your notifications, comments you can reply to, and your kanban work, beside the conversation. Uses your existing AiNecto connection.",
+      "version": "0.1.0"
     }
   ]
 }

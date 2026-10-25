@@ -1,3 +1,6 @@
 node_modules/
 .DS_Store
 *.zip
+# written by Claude Code when it loads a mod from --plugin-dir (per Claude Code version)
+plugins/*/.claude-plugin/types/
+plugins/*/tsconfig.json
