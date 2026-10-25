@@ -120,8 +120,20 @@
   };
   const READ_ONLY = new Set(['identity_get_self', 'conversation_list', 'conversation_get_messages', 'get_my_work_summary', 'list_notifications']);
 
+  // Send controls for the test: hold the answer to conversation_send (stored at once, answered on release),
+  // or fail the next sends before they are stored (server_unavailable).
+  const sendControl = { held: null, failures: 0 };
   async function run(tool, input) {
     await Promise.resolve();
+    if (tool === 'conversation_send' && sendControl.failures > 0) {
+      sendControl.failures -= 1;
+      throw { code: 'server_unavailable', message: 'timeout', retryable: true };
+    }
+    if (tool === 'conversation_send' && sendControl.held) {
+      const out = result(tools[tool](input ?? {}));
+      await sendControl.held.promise;
+      return out;
+    }
     if (!tools[tool]) throw Object.assign(new Error(`not in manifest: ${tool}`), { code: 'not_in_manifest' });
     return result(tools[tool](input ?? {}));
   }
@@ -206,6 +218,16 @@
     signal: (data) => listeners.conv.forEach((fn) => fn({ topic: 'conv', data, peer: 'p-other', by: 'claude-edwin', isMe: false, sameTab: false, kind: 'viewer', guest: false })),
     /** The watch interval fires (as watchTool's refetchInterval would). */
     tick: () => watches.filter((w) => w.live).forEach(runWatch),
+    hold: () => {
+      let release;
+      const promise = new Promise((r) => (release = r));
+      sendControl.held = { promise, release };
+    },
+    release: () => {
+      sendControl.held?.release();
+      sendControl.held = null;
+    },
+    failNext: (n = 1) => (sendControl.failures = n),
     peers: (list) => listeners.peers.forEach((fn) => fn({ peers: list, joined: [], left: [], updated: list })),
   };
 })();

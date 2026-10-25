@@ -17,6 +17,7 @@ import {
   newerThanKnown,
   NOT_AN_INSTRUCTION,
   parseSignal,
+  pendingShown,
   projectUuidOf,
   readLabel,
   readThrough,
@@ -221,4 +222,15 @@ test('time labels: 오전/오후 clock, 오늘·어제·date', () => {
   assert.equal(clockKo('nope'), '');
   assert.equal(initialOf('edwin PARK'), 'E');
   assert.equal(initialOf(''), '?');
+});
+
+test('pendingShown: a sending bubble hides once the server shows the same message — never two', () => {
+  const sending = [{ id: 'a', body: '안녕하세요', afterSeq: 2 }, { id: 'b', body: '안녕하세요', afterSeq: 2 }];
+  const shown = [msg(1), msg(2, ME, { body: '안녕하세요' })];
+  assert.deepEqual(pendingShown(sending, shown, ME).map((p) => p.id), ['a', 'b'], 'an older message with the same text is not it');
+  const one = [...shown, msg(7, ME, { body: '안녕하세요' })];
+  assert.deepEqual(pendingShown(sending, one, ME).map((p) => p.id), ['b'], 'one stored message claims one bubble');
+  assert.deepEqual(pendingShown(sending, [...one, msg(9, ME, { body: '안녕하세요' })], ME), []);
+  assert.deepEqual(pendingShown(sending, [msg(8, OTHER, { body: '안녕하세요' })], ME).length, 2, 'someone else saying the same is not it');
+  assert.deepEqual(pendingShown([{ id: 'c', body: 'x', afterSeq: 99, messageUuid: 'm-3' }], [msg(3, ME, { body: 'x' })], ME), [], 'or by messageUuid');
 });

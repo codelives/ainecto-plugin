@@ -37,6 +37,7 @@ import {
   initialOf,
   MESSAGE_PAGE,
   mergeMessages,
+  pendingShown,
   messageGap,
   mutationId,
   newerThanKnown,
@@ -85,10 +86,9 @@ let marking = {}; // conversationUuid → seq a mark_read was sent for
 let typingNames = [];
 let canAsk = false;
 let banner = null; // { text, error, action?: [label, fn] }
-let note = { text: '', error: false };
 let syncedAt = null;
 let callSeq = 0;
-let sending = false;
+let pending = []; // messages sent from this pane and not yet shown from the server: { id, key, body, state, args, … }
 let popoverOpen = false;
 let stopMessages = null;
 let lastTimelineKey = '';
@@ -256,7 +256,6 @@ function onSignal(data) {
 
 // ── Buttons ──
 
-let draftNonce = {};
 const DRAFT_PREFIX = 'ainecto-panel:draft:';
 
 function draftKey() {
@@ -283,50 +282,80 @@ function saveDraft(key, text) {
   }
 }
 
-async function send() {
+/**
+ * Sends what is typed. The text shows at once as the viewer's own bubble with a spinner and the input empties; when
+ * the server has stored it the bubble becomes the stored message, when it fails the bubble offers «다시 보내기»
+ * with the same clientMutationId (the server stores a message once per key).
+ */
+function send() {
   const key = draftKey();
   const input = $('compose-input');
   const body = input.value.trim();
-  if (!key || !body || sending) return;
-  sending = true;
-  note = { text: '보내는 중…', error: false };
-  render();
-  draftNonce[key] = draftNonce[key] ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  if (!key || !body) return;
+  const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   const target = typeof openChat === 'object' && openChat && tab === 'chat'
     ? { to: { projectUuid, userId: openChat.userId } }
     : { conversationUuid: key };
-  const r = await callTool('conversation_send', { ...target, body, clientMutationId: mutationId(`${key}:${draftNonce[key]}`, body) });
-  sending = false;
+  const p = {
+    id: nonce,
+    key,
+    body,
+    at: new Date().toISOString(),
+    afterSeq: messages.reduce((n, m) => Math.max(n, Number(m.seq)), 0),
+    state: 'sending',
+    error: '',
+    args: { ...target, body, clientMutationId: mutationId(`${key}:${nonce}`, body) },
+  };
+  pending = [...pending, p];
+  input.value = '';
+  saveDraft(key, '');
+  host.room?.presence({ typingIn: null }).catch?.(() => {});
+  render();
+  $('conv-scroll').scrollTop = $('conv-scroll').scrollHeight;
+  deliver(p);
+}
+
+async function deliver(p) {
+  p.state = 'sending';
+  render();
+  const r = await callTool('conversation_send', p.args);
   if (!r.ok) {
-    // The draft and its key stay: pressing again retries the same message, which the server stores once.
-    note = { text: sendError(r), error: true };
+    p.state = 'failed';
+    p.error = sendError(r);
     render();
     return;
   }
+  pending = pending.filter((x) => x !== p);
   const sent = r.data ?? {};
-  delete draftNonce[key];
-  saveDraft(key, '');
-  input.value = '';
-  host.room?.presence({ typingIn: null }).catch?.(() => {});
-  note = { text: '', error: false };
   if (sent.conversationUuid && sent.seq) {
     known = { ...known, [sent.conversationUuid]: Math.max(known[sent.conversationUuid] ?? 0, Number(sent.seq)) };
     host.room?.emit(signalOf(sent.conversationUuid, sent.seq)).catch?.(() => {});
   }
-  if (tab === 'chat' && typeof openChat === 'object' && sent.conversationUuid) {
+  // The stored message replaces the bubble right away; the next read brings the same seq (merged by seq).
+  const stored = { seq: sent.seq, uuid: sent.messageUuid, author: { userId: me?.userId, displayName: me?.displayName }, body: p.body, at: sent.at, readCount: 0 };
+  const startedChat = p.key.startsWith('to:') && tab === 'chat' && typeof openChat === 'object' && openChat && `to:${openChat.userId}` === p.key;
+  if (startedChat && sent.conversationUuid) {
     openChat = sent.conversationUuid;
     followConversation();
-  } else if (sent.conversationUuid) {
-    refresh('conversation_get_messages', messageArgs(sent.conversationUuid));
+    page = { conversationUuid: sent.conversationUuid, type: sent.type, latestSeq: sent.seq, myLastReadSeq: sent.seq };
   }
+  if (sent.conversationUuid && sent.conversationUuid === shownConversationUuid() && sent.seq) {
+    messages = mergeMessages(messages, [stored]);
+  }
+  if (sent.conversationUuid) refresh('conversation_get_messages', messageArgs(sent.conversationUuid));
   refresh('conversation_list', listArgs());
+  render();
+}
+
+function dropPending(p) {
+  pending = pending.filter((x) => x !== p);
   render();
 }
 
 function sendError(r) {
   if (/RECIPIENT_NOT_PROJECT_MEMBER/.test(r.error)) return '상대가 이 프로젝트 구성원이 아니어서 보낼 수 없습니다';
   if (/403|forbidden|edit rights|permission/i.test(r.error)) return '이 프로젝트에서 메시지를 보낼 권한이 없습니다 (보기 권한은 읽기만)';
-  return '보내지 못했습니다: ' + r.error + (r.code === 'server_unavailable' ? ' — 다시 누르면 같은 메시지로 다시 보냅니다' : '');
+  return '보내지 못했습니다';
 }
 
 async function markAlertRead(card) {
@@ -455,7 +484,6 @@ function onConversationChange() {
   followConversation();
   const key = draftKey();
   $('compose-input').value = key ? loadDraft(key) : '';
-  note = { text: '', error: false };
   host.room?.presence({ typingIn: null, viewing: shownConversationUuid() }).catch?.(() => {});
   render();
   updateCanAsk();
@@ -489,42 +517,51 @@ function renderConversation() {
   $('typing').textContent = typingNames.length ? `${typingNames.join(', ')} 입력 중…` : '';
   const input = $('compose-input');
   input.placeholder = direct ? `${name}님에게 메시지 보내기` : '프로젝트 룸에 메시지 보내기';
-  $('compose-send').disabled = sending || !input.value.trim();
-  const n = $('compose-note');
-  n.className = note.error ? 'compose-note error' : 'compose-note';
-  n.textContent = note.text || 'Enter 보내기 · Shift+Enter 줄바꿈';
+  $('compose-send').disabled = !input.value.trim();
 }
 
 function renderTimeline(c, direct, draft) {
   const box = $('timeline');
   const scroller = $('conv-scroll');
   const atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
-  if (draft) {
-    box.replaceChildren(el('div', { className: 'empty' }, `${openChat.name}님과의 첫 메시지를 보내면 챗이 시작됩니다`));
-    return;
-  }
-  if (!page) {
-    box.replaceChildren(el('div', { className: 'empty' }, '불러오는 중…'));
-    return;
-  }
-  if (!messages.length) {
-    box.replaceChildren(el('div', { className: 'empty' }, direct ? '아직 메시지가 없습니다' : '프로젝트 룸에 첫 메시지를 남겨 보세요'));
+  const shown = draft ? [] : messages;
+  const waiting = pendingShown(pending.filter((p) => p.key === draftKey()), shown, me?.userId);
+  if (!shown.length && !waiting.length) {
+    const empty = draft
+      ? `${openChat.name}님과의 첫 메시지를 보내면 챗이 시작됩니다`
+      : !page ? '불러오는 중…' : direct ? '아직 메시지가 없습니다' : '프로젝트 룸에 첫 메시지를 남겨 보세요';
+    box.replaceChildren(el('div', { className: 'empty' }, empty));
     return;
   }
   const now = Date.now();
   const nodes = [];
   let day = '';
-  for (const m of messages) {
+  for (const m of [...shown, ...waiting]) {
     const d = dayKo(m.at, now);
     if (d && d !== day) {
       day = d;
       nodes.push(el('div', { className: 'date' }, d));
     }
-    nodes.push(messageView(m, c, direct));
+    nodes.push(m.state ? pendingView(m) : messageView(m, c, direct));
   }
   box.replaceChildren(...nodes);
   if (atBottom || !box.dataset.shown) scroller.scrollTop = scroller.scrollHeight;
   box.dataset.shown = '1';
+}
+
+/** A message this pane is sending (spinner) or failed to send («다시 보내기» with the same key). */
+function pendingView(p) {
+  const failed = p.state === 'failed';
+  return el('article', { className: failed ? 'msg mine failed' : 'msg mine sending', 'data-pending': p.id }, el('div', { className: 'msg-body' }, [
+    el('div', { className: 'bubble' }, [failed ? null : el('span', { className: 'spinner', role: 'status', 'aria-label': '보내는 중' }), p.body]),
+    el('div', { className: 'receipt' }, failed
+      ? [
+          el('span', { className: 'send-error' }, p.error || '보내지 못했습니다'),
+          el('button', { type: 'button', className: 'ask-link retry', onClick: () => deliver(p) }, '다시 보내기'),
+          el('button', { type: 'button', className: 'ask-link', onClick: () => dropPending(p) }, '지우기'),
+        ]
+      : [el('span', {}, '보내는 중')]),
+  ]));
 }
 
 function messageView(m, c, direct) {
@@ -671,7 +708,7 @@ function wire() {
   input.addEventListener('input', () => {
     const key = draftKey();
     if (key) saveDraft(key, input.value);
-    $('compose-send').disabled = sending || !input.value.trim();
+    $('compose-send').disabled = !input.value.trim();
     const c = shownConversationUuid();
     if (c) host.room?.presence({ typingIn: input.value.trim() ? c : null }).catch?.(() => {});
   });

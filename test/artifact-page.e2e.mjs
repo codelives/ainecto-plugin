@@ -87,6 +87,37 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     assert.deepEqual(signal, { topic: 'conv', data: { c: await fake(() => window.__fake.ROOM), s: 3, k: 'new' } });
     assert.equal(await page.locator('#compose-input').inputValue(), '');
 
+    // While the server has not answered: the text shows at once with a spinner, the input is empty, and a read that
+    // already brings the stored message (watch or signal) does not make it two bubbles.
+    await fake(() => window.__fake.hold());
+    await page.locator('#compose-input').fill('보내는 중 말풍선');
+    await page.locator('#compose-send').click();
+    const sendingBubble = page.locator('.msg.mine.sending', { hasText: '보내는 중 말풍선' });
+    await sendingBubble.locator('.spinner').waitFor();
+    assert.equal(await page.locator('#compose-input').inputValue(), '');
+    await fake(() => window.__fake.tick());
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('.msg.mine', { hasText: '보내는 중 말풍선' }).count(), 1, 'one bubble while sending');
+    await noOverflow('room while sending');
+    await fake(() => window.__fake.release());
+    await sendingBubble.waitFor({ state: 'detached' });
+    assert.equal(await page.locator('.msg.mine', { hasText: '보내는 중 말풍선' }).count(), 1);
+    assert.equal(await page.locator('.spinner').count(), 0, 'the spinner is gone once stored');
+
+    // A failed send: «다시 보내기» with the same clientMutationId; the server stores it once.
+    await fake(() => window.__fake.failNext(1));
+    await page.locator('#compose-input').fill('실패 뒤 다시 보내기');
+    await page.locator('#compose-input').press('Enter');
+    const failed = page.locator('.msg.mine.failed', { hasText: '실패 뒤 다시 보내기' });
+    await failed.getByRole('button', { name: '다시 보내기' }).click();
+    await failed.waitFor({ state: 'detached' });
+    assert.equal(await page.locator('.msg.mine', { hasText: '실패 뒤 다시 보내기' }).count(), 1);
+    const tries = await fake(() => window.__fake.calls.filter((c) => c.tool === 'conversation_send' && c.input.body === '실패 뒤 다시 보내기').map((c) => c.input.clientMutationId));
+    assert.equal(tries.length, 2);
+    assert.equal(tries[0], tries[1], 'the retry reuses the key');
+    const storedCount = await fake(() => window.__fake.store.messages[window.__fake.ROOM].filter((m) => m.body === '실패 뒤 다시 보내기').length);
+    assert.equal(storedCount, 1);
+
     // Someone else's message arrives with a signal: read again at once (no 30-second wait).
     await fake(() => {
       const s = window.__fake.serverMessage(window.__fake.ROOM, window.__fake.EDWIN, '확인했습니다. 같이 볼게요.');

@@ -393,6 +393,26 @@ export function messageGap(shown, page, hasMore) {
   return hasMore && last > 0 && first !== Infinity && first > last ? last : null;
 }
 
+/**
+ * The messages a pane is still sending (or failed to send) that the server's messages do not already show. A send's
+ * stored message comes back from a read without its clientMutationId, so a pending one is matched to the viewer's
+ * own message with the same body stored after what was shown when it was sent (or by messageUuid), one to one.
+ * @param {Array<{ body: string, afterSeq?: number, messageUuid?: string }>} pending oldest first
+ */
+export function pendingShown(pending, messages, meUserId) {
+  const claimed = new Set();
+  return (pending ?? []).filter((p) => {
+    const hit = (messages ?? []).find(
+      (m) =>
+        !claimed.has(Number(m.seq)) &&
+        ((p.messageUuid && m.uuid === p.messageUuid) ||
+          (m.author?.userId === meUserId && m.body === p.body && Number(m.seq) > Number(p.afterSeq ?? 0))),
+    );
+    if (hit) claimed.add(Number(hit.seq));
+    return !hit;
+  });
+}
+
 /** «읽음 N» under the viewer's own message (a direct chat says «읽음»); '' for others' messages or none read. */
 export function readLabel(message, type, meUserId) {
   if (!message || message.author?.userId !== meUserId) return '';
