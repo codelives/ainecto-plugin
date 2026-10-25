@@ -16,7 +16,7 @@
       "name": "ainecto-panel",
       "source": "./plugins/ainecto-panel",
       "description": "A Claude Code pane for AiNecto: your notifications, comments you can reply to, and your kanban work, beside the conversation. Uses your existing AiNecto connection.",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ]
 }

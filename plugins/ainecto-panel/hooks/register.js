@@ -42,6 +42,7 @@ let lastUnread = null
 let retryAt = 0
 let lastSyncAt = null
 let error = null
+let failure = null // { server, error }: why the last summary read failed, shown in the pane
 let busy = false
 let caughtUp = false
 let tab = 'notifications'
@@ -113,6 +114,7 @@ async function findServer($) {
     $.ui.log(`ainecto tool.list failed: ${err?.message ?? err}`, { to: 'debug' })
   }
   const picked = pickServer(names)
+  $.ui.log(`ainecto servers listed: ${names.length} mcp tools, picked ${picked ?? 'none'}`, { to: 'debug' })
   if (picked) {
     await useServer($, picked)
     return picked
@@ -167,18 +169,21 @@ async function poll($) {
   try {
     if (!(await findServer($))) {
       error = 'AiNecto MCP 연결 없음'
+      failure = null
       retrySoon($)
       return
     }
     const r = await callTool($, 'get_my_work_summary', {})
     if (!r.ok) {
       error = '동기화 실패'
+      failure = { server, error: r.error }
       server = null // look the server up again next time (renamed, removed, or not connected yet)
       retrySoon($)
       return
     }
     view = summaryView(r.data)
     error = null
+    failure = null
     quickRetries = 0
     const now = await $.clock.now()
     lastSyncAt = now
@@ -286,7 +291,10 @@ export function register(on) {
     const shown = Math.max(3, Math.floor((bodyRows - 5) / 2))
 
     const head = error
-      ? Text({ color: 'red', children: ['⚠ ' + error + (server ? '' : ' — npx -y ainecto@latest setup 을 실행하세요')] })
+      ? Text({
+          color: 'red',
+          children: ['⚠ ' + error + (failure ? ` (${failure.server})` : ' — npx -y ainecto@latest setup 을 실행하세요')],
+        })
       : Text({
           dimColor: true,
           children: [
@@ -413,12 +421,13 @@ export function register(on) {
       flexDirection: 'column',
       children: [
         head,
+        ...(failure ? [Text({ dimColor: true, wrap: 'truncate-end', children: ['원인: ' + failure.error] })] : []),
         tabRow,
         ...replyBox,
         ...workHead,
         ...body,
         ...more,
-        Text({ dimColor: true, children: ['서버: ' + (server ?? '—')] }),
+        Text({ dimColor: true, children: ['서버: ' + (server ?? failure?.server ?? '—')] }),
       ],
     })
   })
