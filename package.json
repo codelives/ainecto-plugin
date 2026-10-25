@@ -11,8 +11,10 @@
   "scripts": {
     "build": "node scripts/build-plugin.mjs",
     "check": "node scripts/build-plugin.mjs --check",
-    "test": "node scripts/build-plugin.mjs --check && node --test test/*.test.mjs",
+    "test": "node scripts/build-plugin.mjs --check && node scripts/build-mcp-app.mjs --check && node --test test/*.test.mjs",
     "test:panel": "cd plugins/ainecto-panel && claude plugin test",
-    "snapshot-tools": "node scripts/snapshot-tools.mjs"
+    "snapshot-tools": "node scripts/snapshot-tools.mjs",
+    "build:app": "node scripts/build-mcp-app.mjs",
+    "copy:app": "node scripts/copy-mcp-app.mjs"
   }
 }

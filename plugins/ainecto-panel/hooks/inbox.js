@@ -1,10 +1,16 @@
 // The AiNecto pane's data rules, as pure functions: no `$`, no I/O, no clock.
-// The Claude Code mod (register.js) draws what these return; the Claude artifact pane (stage 1-b)
-// is meant to import the same file, so both panes agree on what they show.
-// Unit tests: test/panel-inbox.test.mjs (node --test).
+// Two panes draw what these return and import this same file, so they agree on what they show:
+// the Claude Code mod (register.js) and the MCP App panel (mcp-app/panel.js, opened by ChatGPT,
+// the Codex app and Claude). Unit tests: test/panel-inbox.test.mjs (node --test).
 
 /** Notifications kept in the pane, newest first. */
 export const KEEP = 100;
+
+/** How often a pane reads get_my_work_summary while it is shown. */
+export const POLL_MS = 30_000;
+/** A failed read (MCP not connected yet, a blip) is retried this soon, at most QUICK_RETRY_MAX times in a row. */
+export const QUICK_RETRY_MS = 5_000;
+export const QUICK_RETRY_MAX = 6;
 
 /** Server names tried when the session's tool list names no AiNecto server, in order. */
 export const SERVER_CANDIDATES = [

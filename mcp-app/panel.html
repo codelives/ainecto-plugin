@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AiNecto</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: var(--color-background-primary, light-dark(#ffffff, #1b1b1b));
+    --bg-2: var(--color-background-secondary, light-dark(#f5f5f4, #262626));
+    --fg: var(--color-text-primary, light-dark(#1c1c1c, #f2f2f2));
+    --fg-2: var(--color-text-secondary, light-dark(#5f5f5f, #a8a8a8));
+    --danger: var(--color-text-danger, light-dark(#b42318, #ff8a7a));
+    --line: var(--color-border-tertiary, light-dark(#e7e5e4, #3a3a3a));
+    --accent: var(--color-text-info, light-dark(#1d4ed8, #8ab4ff));
+    --radius: var(--border-radius-md, 8px);
+    --font: var(--font-sans, system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif);
+    --size: var(--font-text-sm-size, 13px);
+  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px 14px; background: var(--bg); color: var(--fg); font: var(--size)/1.45 var(--font); }
+  .head { color: var(--fg-2); margin-bottom: 8px; }
+  .head.error { color: var(--danger); }
+  .notice { background: var(--bg-2); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 8px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+  .tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--fg-2); padding: 6px 8px; font: inherit; cursor: pointer; }
+  .tab.active { color: var(--fg); border-bottom-color: var(--fg); font-weight: 600; }
+  .tab.sync { margin-left: auto; }
+  .work-head { color: var(--fg-2); margin-bottom: 6px; }
+  .reply { background: var(--bg-2); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 8px; }
+  .reply-target { color: var(--fg-2); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .reply .reply-form { display: flex; gap: 6px; flex-wrap: wrap; }
+  .reply textarea { flex: 1 1 220px; min-height: 56px; resize: vertical; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
+  .reply button { font: inherit; padding: 4px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; align-self: flex-end; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  .row { padding: 7px 0; border-bottom: 1px solid var(--line); }
+  .row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row.unread .title { font-weight: 600; }
+  .row .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding-left: 14px; color: var(--fg-2); }
+  .row .detail { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; }
+  .empty { color: var(--fg-2); padding: 10px 0; }
+  .foot { color: var(--fg-2); margin-top: 10px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<div id="head" class="head">○ 연결 중</div>
+<div id="notice" class="notice" hidden></div>
+<nav id="tabs" class="tabs" aria-label="AiNecto"></nav>
+<div id="reply" class="reply" hidden>
+  <div id="reply-target" class="reply-target"></div>
+  <div class="reply-form">
+    <textarea id="reply-input" aria-label="답글" placeholder="답글을 입력하세요 (Ctrl/⌘+Enter 로 보내기)"></textarea>
+    <button type="button" id="reply-send">보내기</button>
+    <button type="button" id="reply-cancel">취소</button>
+  </div>
+</div>
+<div id="work-head" class="work-head" hidden></div>
+<ul id="rows"></ul>
+<div id="foot" class="foot"></div>
+<script>
+/*@@BUNDLE@@*/
+</script>
+</body>
+</html>

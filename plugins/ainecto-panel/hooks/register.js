@@ -17,6 +17,9 @@ import {
   mutationId,
   parseToolResult,
   pickServer,
+  POLL_MS,
+  QUICK_RETRY_MAX,
+  QUICK_RETRY_MS,
   readItems,
   replyTarget,
   SERVER_CANDIDATES,
@@ -28,9 +31,6 @@ import {
 } from './inbox.js'
 
 const PANE = 'ainecto'
-const POLL_MS = 30_000
-const QUICK_RETRY_MS = 5_000
-const QUICK_RETRY_MAX = 6
 
 // Pane state. Module variables: lost on a reload, rebuilt by the next poll.
 let server = null

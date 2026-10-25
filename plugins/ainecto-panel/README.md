@@ -90,6 +90,24 @@ npm run test:panel   # the mod itself, with `claude plugin test` (no session, no
 ```
 
 - `hooks/inbox.js` holds the pane's data rules as pure functions (merging, de-duplicating, which tab,
-  when to read the list). The Claude artifact pane is meant to reuse it.
+  when to read the list). The MCP App panel below imports the same file.
 - `hooks/register.js` holds the hooks, the reading loop, and the drawing.
 - `.claude-plugin/plugin.json` is generated from `plugin-src/listing.json` (`panel`); do not edit it by hand.
+
+## The same panel in ChatGPT, the Codex app and Claude (MCP App)
+
+Hosts that render [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) open the same three tabs from
+the AiNecto MCP server itself: the tool `open_ainecto_panel` shows the resource `ui://ainecto/panel`, and
+ChatGPT and the Codex app also list it beside a conversation and in the sidebar. Nothing to install: connect
+the AiNecto MCP server and ask for the AiNecto panel (or open it from the host's app list).
+
+The HTML is built here and served by ainecto-api, which keeps a copy:
+
+```bash
+npm run build:app                          # mcp-app/{panel.html,bridge.js,panel.js} + hooks/inbox.js → mcp-app/dist/
+npm run copy:app -- ../ainecto-api         # copy the HTML and its .sha256 into ainecto-api
+```
+
+`npm test` fails when `mcp-app/dist/` is not a fresh build; ainecto-api's `McpAppResourcesTest` fails when its
+copy no longer matches the `.sha256` that came with it. Commit the copy in ainecto-api with the commit of this
+repository it came from.
