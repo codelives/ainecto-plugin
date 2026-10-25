@@ -1,7 +1,14 @@
-// AiNecto panel as an MCP App (KAN-369): notifications, comments you can reply to, and your kanban work.
-// One HTML for every host that renders MCP Apps (ChatGPT web and desktop, the Codex app, Claude web and
-// desktop). The data rules are the Claude Code pane's own (../plugins/ainecto-panel/hooks/inbox.js), so the
-// two panes show the same thing; this file only draws and talks to the host.
+// The AiNecto panel's screen (KAN-369): notifications, comments you can reply to, and your kanban work.
+// The data rules are the Claude Code pane's own (../plugins/ainecto-panel/hooks/inbox.js), so every pane shows
+// the same thing; this file only draws, reads on a timer and runs the buttons. It does not know its host:
+// the caller passes one (startPanel), which reaches the AiNecto MCP server with the user's own connection.
+//   mcp-app/main.js      MCP Apps hosts (ChatGPT, the Codex app, Claude conversations) — mcp-app/dist/ainecto-panel.html
+//   mcp-app/artifact.js  a Claude artifact beside the conversation — mcp-app/dist/ainecto-panel-artifact.html
+//
+// host: { connect({ showToolResult, stop }) → Promise<string> (host name; rejects when it cannot connect),
+//         callTool(name, args) → Promise<MCP tools/call result> (rejects on failure; err.retryable === false
+//         means repeating it alone cannot succeed), openLink?(url), askAi?(row) }
+//   Without openLink a link is a plain <a target=_blank>; without askAi there is no «AI에게» button.
 //
 // Reading rules (the same as the Claude Code pane — see register.js):
 // - The numbers come from get_my_work_summary every POLL_MS, and only while the panel is visible.
@@ -27,9 +34,11 @@ import {
   summaryView,
   threadRoot,
 } from '../plugins/ainecto-panel/hooks/inbox.js';
-import { askAiText, createBridge, initializeParams } from './bridge.js';
-
-const VERSION = '0.1.0';
+/**
+ * Every AiNecto tool this panel calls. A Claude artifact must name exactly these in its `mcp` manifest
+ * (test/mcp-app.test.mjs checks the list against the calls below).
+ */
+export const PANEL_TOOLS = ['get_my_work_summary', 'list_notifications', 'mark_notifications_read', 'list_comments', 'create_comments'];
 
 const TABS = [
   ['notifications', '알림'],
@@ -55,17 +64,9 @@ let hostName = '';
 let stopped = false;
 let notice = '';
 let noticeTimer = null;
+let host = null;
 
 const $ = (id) => document.getElementById(id);
-
-const bridge = createBridge({
-  post: (message) => window.parent.postMessage(message, '*'),
-  listen: (onMessage) =>
-    window.addEventListener('message', (event) => {
-      if (event.source === window.parent) onMessage(event.data);
-    }),
-  log: (line) => console.warn(`[ainecto-panel] ${line}`),
-});
 
 // ── The one place this panel talks to AiNecto: every call writes a request line and a response line ──
 async function callTool(name, args) {
@@ -74,9 +75,9 @@ async function callTool(name, args) {
   console.info(`[ainecto-panel] → #${id} ${name} args=${Object.keys(args ?? {}).join(',')}`);
   let parsed;
   try {
-    parsed = parseToolResult(await bridge.request('tools/call', { name, arguments: args ?? {} }));
+    parsed = parseToolResult(await host.callTool(name, args ?? {}));
   } catch (err) {
-    parsed = { ok: false, error: String(err?.message ?? err) };
+    parsed = { ok: false, error: String(err?.message ?? err), retryable: err?.retryable };
   }
   console.info(`[ainecto-panel] ← #${id} ${name} ${parsed.ok ? 'ok' : 'error: ' + parsed.error} ${Date.now() - started}ms`);
   return parsed;
@@ -115,8 +116,8 @@ async function poll() {
   try {
     const r = await callTool('get_my_work_summary', {});
     if (!r.ok) {
-      error = '동기화 실패';
-      retrySoon();
+      error = '동기화 실패' + (r.retryable === false ? ': ' + r.error : '');
+      if (r.retryable !== false) retrySoon();
       return;
     }
     useSummary(r.data);
@@ -173,18 +174,9 @@ async function sendReply(row, text) {
   flash('답글을 달았습니다');
 }
 
-async function openLink(url) {
-  try {
-    await bridge.request('ui/open-link', { url });
-  } catch (err) {
-    console.warn(`[ainecto-panel] ui/open-link refused: ${err?.message ?? err}`);
-    window.open(url, '_blank', 'noopener');
-  }
-}
-
 async function askAi(row) {
   try {
-    await bridge.request('ui/message', { role: 'user', content: { type: 'text', text: askAiText(row) } });
+    await host.askAi(row);
     flash('대화창에 보냈습니다');
   } catch (err) {
     flash('대화창에 보내지 못했습니다: ' + (err?.message ?? err));
@@ -206,7 +198,9 @@ function flash(text) {
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
-    if (k === 'onClick') node.addEventListener('click', v);
+    if (k === 'onClick') {
+      if (v) node.addEventListener('click', v);
+    }
     else if (k === 'className') node.className = v;
     else if (v !== undefined && v !== null && v !== false) node.setAttribute(k, v === true ? '' : String(v));
   }
@@ -251,7 +245,15 @@ function renderReply() {
 
 function rowView(row) {
   const buttons = [];
-  if (row.url) buttons.push(el('button', { className: 'link', onClick: () => openLink(row.url) }, '열기'));
+  if (row.url) {
+    const onClick = host.openLink
+      ? (event) => {
+          event.preventDefault();
+          host.openLink(row.url);
+        }
+      : undefined;
+    buttons.push(el('a', { className: 'link', href: row.url, target: '_blank', rel: 'noopener', onClick }, '열기'));
+  }
   if (row.actions.includes('read')) buttons.push(el('button', { className: 'link', onClick: () => markRead(row) }, '확인'));
   if (row.actions.includes('reply')) {
     buttons.push(
@@ -264,7 +266,9 @@ function rowView(row) {
       }, '답하기'),
     );
   }
-  if (row.item?.target || row.url) buttons.push(el('button', { className: 'link', onClick: () => askAi(row) }, 'AI에게'));
+  if (host.askAi && (row.item?.target || row.url)) {
+    buttons.push(el('button', { className: 'link', onClick: () => askAi(row) }, 'AI에게'));
+  }
   return el('li', { className: row.unread ? 'row unread' : 'row' }, [
     el('div', { className: 'title' }, (row.unread ? '● ' : '○ ') + row.title),
     el('div', { className: 'meta' }, [el('span', { className: 'detail' }, row.detail || ' '), ...buttons]),
@@ -307,44 +311,6 @@ function render() {
   $('foot').textContent = hostName ? `AiNecto 패널 · ${hostName}` : 'AiNecto 패널';
 }
 
-// ── Host context: theme, style variables, size ──
-
-function applyHostContext(ctx) {
-  if (!ctx) return;
-  if (ctx.theme === 'light' || ctx.theme === 'dark') {
-    document.documentElement.dataset.theme = ctx.theme;
-    document.documentElement.style.colorScheme = ctx.theme;
-  }
-  const vars = ctx.styles?.variables;
-  if (vars && typeof vars === 'object') {
-    for (const [k, v] of Object.entries(vars)) {
-      if (k.startsWith('--') && typeof v === 'string') document.documentElement.style.setProperty(k, v);
-    }
-  }
-}
-
-function reportSize() {
-  let last = '';
-  let queued = false;
-  // The content's own size (the body), not the viewport: a host with a flexible height sizes the frame to it.
-  const send = () => {
-    queued = false;
-    const box = document.body.getBoundingClientRect();
-    const width = Math.ceil(box.width);
-    const height = Math.ceil(box.height);
-    const key = `${width}x${height}`;
-    if (key === last) return;
-    last = key;
-    bridge.notify('ui/notifications/size-changed', { width, height });
-  };
-  new ResizeObserver(() => {
-    if (!queued) {
-      queued = true;
-      requestAnimationFrame(send);
-    }
-  }).observe(document.body);
-}
-
 // ── Start ──
 
 function wire() {
@@ -367,39 +333,30 @@ function wire() {
     if (document.visibilityState === 'visible' && (!lastSyncAt || Date.now() - lastSyncAt >= POLL_MS)) poll();
   });
 
-  // The tool that opened the panel returns get_my_work_summary's body: draw it before the first read.
-  bridge.onNotification('ui/notifications/tool-result', (result) => {
-    const parsed = parseToolResult(result);
-    if (parsed.ok && parsed.data && typeof parsed.data === 'object' && 'notifications' in parsed.data) {
-      useSummary(parsed.data);
-      render();
-    }
-  });
-  bridge.onNotification('ui/notifications/host-context-changed', (ctx) => applyHostContext(ctx));
-  bridge.onRequest('ui/resource-teardown', () => {
-    stopped = true;
-    return {};
-  });
-  bridge.onRequest('ping', () => ({}));
 }
 
-async function start() {
+/** A tool result the host already has (the tool that opened the panel returns get_my_work_summary's body). */
+function showToolResult(result) {
+  const parsed = parseToolResult(result);
+  if (parsed.ok && parsed.data && typeof parsed.data === 'object' && 'notifications' in parsed.data) {
+    useSummary(parsed.data);
+    render();
+  }
+}
+
+/** Draws the panel and starts reading through `host` (see the top of this file). */
+export async function startPanel(theHost) {
+  host = theHost;
   wire();
   render();
   try {
-    const init = await bridge.request('ui/initialize', initializeParams(VERSION));
-    hostName = init?.hostInfo?.name ?? '';
-    applyHostContext(init?.hostContext);
+    hostName = (await host.connect({ showToolResult, stop: () => (stopped = true) })) ?? '';
   } catch (err) {
     error = '호스트 연결 실패: ' + (err?.message ?? err);
     render();
     return;
   }
-  bridge.notify('ui/notifications/initialized', {});
-  reportSize();
   render();
   setInterval(tick, POLL_MS);
   poll();
 }
-
-start();

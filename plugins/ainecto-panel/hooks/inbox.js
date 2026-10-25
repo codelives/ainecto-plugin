@@ -20,7 +20,8 @@ export const SERVER_CANDIDATES = [
   'ai-erd', // setups made before the AiNecto rename
 ];
 
-const PROBE_TOOL = 'get_my_work_summary';
+/** The tool that marks an MCP server as AiNecto (every pane looks for it to find the server). */
+export const PROBE_TOOL = 'get_my_work_summary';
 
 /**
  * Picks the AiNecto MCP server from the session's tool names: a server is one that has
