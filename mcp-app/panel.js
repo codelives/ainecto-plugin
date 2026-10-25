@@ -1,74 +1,106 @@
-// The AiNecto panel's screen (KAN-369): notifications, comments you can reply to, and your kanban work.
-// The data rules are the Claude Code pane's own (../plugins/ainecto-panel/hooks/inbox.js), so every pane shows
-// the same thing; this file only draws, reads on a timer and runs the buttons. It does not know its host:
-// the caller passes one (startPanel), which reaches the AiNecto MCP server with the user's own connection.
+// The AiNecto project panel's screen (KAN-368/369, design claude-artifact-chat-design): one AiNecto project's room,
+// direct chats between its members, and its notifications as cards. The data rules are the shared pane rules
+// (../plugins/ainecto-panel/hooks/inbox.js); this file draws, keeps the reads going and runs the buttons. It does
+// not know its host: the caller passes one (startPanel), which reaches AiNecto with the viewer's own connection.
 //   mcp-app/main.js      MCP Apps hosts (ChatGPT, the Codex app, Claude conversations) — mcp-app/dist/ainecto-panel.html
 //   mcp-app/artifact.js  a Claude artifact beside the conversation — mcp-app/dist/ainecto-panel-artifact.html
 //
-// host: { connect({ showToolResult, stop }) → Promise<string> (host name; rejects when it cannot connect),
-//         callTool(name, args) → Promise<MCP tools/call result> (rejects on failure; err.retryable === false
-//         means repeating it alone cannot succeed), openLink?(url), askAi?(row) }
-//   Without openLink a link is a plain <a target=_blank>; without askAi there is no «AI에게» button.
+// host: {
+//   connect({ showToolResult, stop }) → Promise<{ name, projectUuid? }>   rejects when it cannot connect
+//   callTool(name, args) → Promise<MCP tools/call result>   rejects on failure (err.code, err.retryable)
+//   watch?(name, args, onEvent) → unsubscribe     keeps a read current: onEvent({ result }) or onEvent({ error })
+//   refresh?(name, args) → Promise                 re-reads a watched call now
+//   openLink?(url)                                 without it a link is a plain <a target=_blank>
+//   canSendToClaude?() → Promise<boolean>          whether «AI에게» can go through right now
+//   sendToClaude?(ctx) → Promise<string>           hands contextForClaude(...) to the viewer's AI; called synchronously
+//                                                  from the click (the artifact runtime proves the gesture from it)
+//   room?: { emit(data), on(fn), onReconnect(fn), presence(patch), onPeers(fn), names(ids) → Promise<{[id]: name}> }
+//   managePermissions?()                           opens the host's permission settings
+// }
+// Without watch the panel reads again every POLL_MS while it is shown (MCP Apps give a panel no live reads).
 //
-// Reading rules (the same as the Claude Code pane — see register.js):
-// - The numbers come from get_my_work_summary every POLL_MS, and only while the panel is visible.
-// - list_notifications is read only when the unread number changed (or a backlog page waits), and the
-//   panel waits out retryAfterSeconds: that tool's 30-second limit is shared with the agent on the same
-//   connection (the host calls our server with the same connection the conversation's AI uses).
-// - The panel never sends `ack` and never uses `latest`; it reads on from its own nextCursor.
-// - Writes happen only when the user presses a button: mark_notifications_read and create_comments.
-// Nothing is stored in the browser: the server is the truth, a reopened panel reads it again.
+// Rules this file keeps:
+// - The server is the truth for messages. A room signal carries only {conversation, seq} and is sent after the
+//   server stored the message; whoever hears it reads again. A pane that learns of a newer message by reading
+//   passes the signal on (newerThanKnown), so messages sent from elsewhere (CLI, Claude Code, the web) spread too.
+// - Notifications are browsed newest first with order:"newest": the panel never sends `ack` and never moves the
+//   agent's saved position.
+// - Writes happen only when the viewer presses something: conversation_send, conversation_mark_read (when a
+//   conversation is on screen with unread messages), mark_notifications_read.
 import {
-  applyRead,
-  buildTabs,
-  listArgs,
-  mergeNotifications,
+  ALERT_PAGE,
+  alertCards,
+  clockKo,
+  contextForClaude,
+  conversationsView,
+  dayKo,
+  initialOf,
+  MESSAGE_PAGE,
+  mergeMessages,
+  messageGap,
   mutationId,
+  newerThanKnown,
+  PANEL_TABS,
+  parseSignal,
   parseToolResult,
   POLL_MS,
-  QUICK_RETRY_MAX,
-  QUICK_RETRY_MS,
-  readItems,
-  replyTarget,
-  shouldFetchList,
-  summaryView,
-  threadRoot,
+  readLabel,
+  readThrough,
+  signalOf,
+  tabCounts,
+  typingIn,
+  whenKo,
 } from '../plugins/ainecto-panel/hooks/inbox.js';
+
 /**
  * Every AiNecto tool this panel calls. A Claude artifact must name exactly these in its `mcp` manifest
  * (test/mcp-app.test.mjs checks the list against the calls below).
  */
-export const PANEL_TOOLS = ['get_my_work_summary', 'list_notifications', 'mark_notifications_read', 'list_comments', 'create_comments'];
-
-const TABS = [
-  ['notifications', '알림'],
-  ['comments', '댓글'],
-  ['work', '업무'],
+export const PANEL_TOOLS = [
+  'identity_get_self',
+  'conversation_list',
+  'conversation_get_messages',
+  'conversation_send',
+  'conversation_mark_read',
+  'get_my_work_summary',
+  'list_notifications',
+  'mark_notifications_read',
 ];
 
-// Panel state. Lost when the host tears the panel down; the next open reads the server again.
-let view = null;
-let notifications = [];
-let cursor = null;
-let hasMore = false;
-let lastUnread = null;
-let retryAt = 0;
-let lastSyncAt = null;
-let error = null;
-let busy = false;
-let tab = 'notifications';
-let replying = null;
-let quickRetries = 0;
-let callSeq = 0;
+// ── State. Lost when the host tears the panel down; the next open reads the server again. ──
+let host = null;
 let hostName = '';
 let stopped = false;
-let notice = '';
-let noticeTimer = null;
-let host = null;
+let projectUuid = null;
+let me = null; // { userId, displayName }
+let conv = conversationsView(null, null);
+let unreadAlerts = 0;
+let cards = [];
+let tab = 'room';
+let openChat = null; // a chat's conversationUuid, or { userId, name } for a chat not started yet
+let messages = []; // the conversation on screen, oldest first
+let page = null; // its last conversation_get_messages answer without the messages
+let known = {}; // conversationUuid → highest seq this pane knows (from a read or a signal)
+let marking = {}; // conversationUuid → seq a mark_read was sent for
+let typingNames = [];
+let canAsk = false;
+let banner = null; // { text, error, action?: [label, fn] }
+let note = { text: '', error: false };
+let syncedAt = null;
+let callSeq = 0;
+let sending = false;
+let popoverOpen = false;
+let stopMessages = null;
+let lastTimelineKey = '';
+let ready = false; // identity read: the viewer is known, so the project's reads can start
+let pendingProject = null;
+const reads = new Map(); // key → { name, args, read() } for hosts without watch
 
 const $ = (id) => document.getElementById(id);
+const keyOf = (name, args) => `${name} ${JSON.stringify(args ?? {})}`;
 
-// ── The one place this panel talks to AiNecto: every call writes a request line and a response line ──
+// ── The one place this panel talks to AiNecto: a request line and a response line for every call ──
+
 async function callTool(name, args) {
   const id = ++callSeq;
   const started = Date.now();
@@ -77,131 +109,308 @@ async function callTool(name, args) {
   try {
     parsed = parseToolResult(await host.callTool(name, args ?? {}));
   } catch (err) {
-    parsed = { ok: false, error: String(err?.message ?? err), retryable: err?.retryable };
+    parsed = { ok: false, error: String(err?.message ?? err), code: err?.code, retryable: err?.retryable };
   }
-  console.info(`[ainecto-panel] ← #${id} ${name} ${parsed.ok ? 'ok' : 'error: ' + parsed.error} ${Date.now() - started}ms`);
+  console.info(`[ainecto-panel] ← #${id} ${name} ${parsed.ok ? 'ok' : `error ${parsed.code ?? ''}: ${parsed.error}`} ${Date.now() - started}ms`);
   return parsed;
 }
 
-function retrySoon() {
-  if (stopped || quickRetries >= QUICK_RETRY_MAX) return;
-  quickRetries += 1;
-  setTimeout(() => poll(), QUICK_RETRY_MS);
+/**
+ * Keeps one read current: the host's watch when it has one, else a read now and every POLL_MS while shown.
+ * onData(data, storedAt) gets the parsed body; onError(error) a parsed failure. Returns the unsubscribe.
+ */
+function subscribe(name, args, onData, onError) {
+  const deliver = (result, storedAt) => {
+    const parsed = parseToolResult(result);
+    if (parsed.ok) {
+      syncedAt = storedAt ?? Date.now();
+      onData(parsed.data);
+    } else onError(parsed);
+  };
+  if (host.watch) {
+    const id = ++callSeq;
+    console.info(`[ainecto-panel] ⇢ #${id} watch ${name} args=${Object.keys(args ?? {}).join(',')}`);
+    return host.watch(name, args, (ev) => {
+      if (ev.error) {
+        console.info(`[ainecto-panel] ⇠ #${id} ${name} error ${ev.error.code ?? ''}: ${ev.error.message}`);
+        onError({ ok: false, error: String(ev.error.message ?? ev.error), code: ev.error.code, retryable: ev.error.retryable });
+      } else {
+        console.info(`[ainecto-panel] ⇠ #${id} ${name} ok${ev.result?.cache ? ' (cache)' : ''}`);
+        deliver(ev.result, ev.result?.cache?.storedAt);
+      }
+    });
+  }
+  const key = keyOf(name, args);
+  const entry = {
+    async read() {
+      const r = await callTool(name, args);
+      if (reads.get(key) !== entry) return;
+      if (r.ok) {
+        syncedAt = Date.now();
+        onData(r.data);
+      } else onError(r);
+    },
+  };
+  reads.set(key, entry);
+  entry.read();
+  const timer = setInterval(() => {
+    if (document.visibilityState !== 'hidden' && !stopped) entry.read();
+  }, POLL_MS);
+  return () => {
+    clearInterval(timer);
+    if (reads.get(key) === entry) reads.delete(key);
+  };
 }
 
-async function fetchList() {
-  const r = await callTool('list_notifications', listArgs(cursor));
-  if (!r.ok) return;
-  const data = r.data ?? {};
-  if (data.retryAfterSeconds) {
-    retryAt = Date.now() + Number(data.retryAfterSeconds) * 1000;
+/** Reads a subscribed call again now. */
+function refresh(name, args) {
+  if (host.watch && host.refresh) return host.refresh(name, args).catch(() => {});
+  return reads.get(keyOf(name, args))?.read();
+}
+
+const listArgs = () => ({ projectUuid });
+const summaryArgs = () => ({ projectUuids: [projectUuid] });
+const alertArgs = () => ({ projectUuids: [projectUuid], order: 'newest', limit: ALERT_PAGE });
+const messageArgs = (c) => ({ conversationUuid: c, limit: MESSAGE_PAGE });
+
+// ── What is on screen ──
+
+/** The conversation the conversation view shows: the room on the room tab, the open chat on the chat tab. */
+function shownConversation() {
+  if (tab === 'room') return conv.room;
+  if (tab === 'chat' && typeof openChat === 'string') {
+    return conv.chats.find((c) => c.conversationUuid === openChat) ?? { conversationUuid: openChat, type: 'DIRECT', name: '' };
+  }
+  return null;
+}
+
+function shownConversationUuid() {
+  return shownConversation()?.conversationUuid ?? null;
+}
+
+/** Re-points the message read at the conversation on screen. */
+function followConversation() {
+  const c = shownConversationUuid();
+  const key = c ?? '';
+  if (key === lastTimelineKey) return;
+  lastTimelineKey = key;
+  stopMessages?.();
+  stopMessages = null;
+  messages = [];
+  page = null;
+  if (!c) return;
+  stopMessages = subscribe('conversation_get_messages', messageArgs(c), (data) => useMessages(c, data), (err) => {
+    showError(err, '메시지를 읽지 못했습니다');
+  });
+}
+
+async function useMessages(c, data) {
+  if (c !== shownConversationUuid()) return;
+  const incoming = Array.isArray(data?.messages) ? data.messages : [];
+  const gap = messageGap(messages, incoming, data?.hasMore);
+  messages = mergeMessages(messages, incoming);
+  page = { conversationUuid: c, type: data?.type, latestSeq: data?.latestSeq, myLastReadSeq: data?.myLastReadSeq };
+  passOn([{ conversationUuid: c, latestSeq: data?.latestSeq }]);
+  clearBanner();
+  render();
+  if (gap !== null) {
+    const r = await callTool('conversation_get_messages', { conversationUuid: c, afterSeq: gap, limit: MESSAGE_PAGE });
+    if (r.ok && c === shownConversationUuid()) {
+      messages = mergeMessages(messages, r.data?.messages);
+      render();
+    }
+  }
+  markSeen(c);
+}
+
+/** The viewer sees the conversation: move their read position (and the notifications it covers). */
+async function markSeen(c) {
+  const through = readThrough(page);
+  if (!through || document.visibilityState === 'hidden' || (marking[c] ?? 0) >= through) return;
+  marking[c] = through;
+  const r = await callTool('conversation_mark_read', { conversationUuid: c, throughSeq: through });
+  if (!r.ok) {
+    marking[c] = 0;
     return;
   }
-  notifications = mergeNotifications(notifications, data.items).items;
-  if (data.nextCursor) cursor = data.nextCursor;
-  hasMore = Boolean(data.hasMore);
-  lastUnread = view ? view.unread : null;
+  refresh('conversation_list', listArgs());
+  refresh('get_my_work_summary', summaryArgs());
 }
 
-function useSummary(data) {
-  view = summaryView(data);
-  error = null;
-  quickRetries = 0;
-  lastSyncAt = Date.now();
+/** Signals for what this pane read before anyone told it (see newerThanKnown). */
+function passOn(conversations) {
+  const next = newerThanKnown(known, conversations);
+  known = next.known;
+  for (const s of next.signals) host.room?.emit(s).catch?.(() => {});
 }
 
-async function poll() {
-  if (busy || stopped) return;
-  busy = true;
+function onSignal(data) {
+  const s = parseSignal(data);
+  if (!s) return;
+  const mine = (conv.room && conv.room.conversationUuid === s.c) || conv.chats.some((c) => c.conversationUuid === s.c);
+  if (!mine || (known[s.c] ?? 0) >= s.s) return;
+  known = { ...known, [s.c]: s.s };
+  refresh('conversation_list', listArgs());
+  if (s.c === shownConversationUuid()) refresh('conversation_get_messages', messageArgs(s.c));
+}
+
+// ── Buttons ──
+
+let draftNonce = {};
+const DRAFT_PREFIX = 'ainecto-panel:draft:';
+
+function draftKey() {
+  if (tab === 'room') return conv.room?.conversationUuid ?? null;
+  if (typeof openChat === 'string') return openChat;
+  if (openChat?.userId) return `to:${openChat.userId}`;
+  return null;
+}
+
+function loadDraft(key) {
   try {
-    const r = await callTool('get_my_work_summary', {});
-    if (!r.ok) {
-      error = '동기화 실패' + (r.retryable === false ? ': ' + r.error : '');
-      if (r.retryable !== false) retrySoon();
-      return;
-    }
-    useSummary(r.data);
-    if (shouldFetchList({ unread: view.unread, lastUnread, hasMore, now: Date.now(), retryAt })) await fetchList();
-  } finally {
-    busy = false;
+    return localStorage.getItem(DRAFT_PREFIX + projectUuid + ':' + key) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function saveDraft(key, text) {
+  try {
+    if (text) localStorage.setItem(DRAFT_PREFIX + projectUuid + ':' + key, text);
+    else localStorage.removeItem(DRAFT_PREFIX + projectUuid + ':' + key);
+  } catch {
+    // a private window or blocked storage: the draft lives only on screen
+  }
+}
+
+async function send() {
+  const key = draftKey();
+  const input = $('compose-input');
+  const body = input.value.trim();
+  if (!key || !body || sending) return;
+  sending = true;
+  note = { text: '보내는 중…', error: false };
+  render();
+  draftNonce[key] = draftNonce[key] ?? `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const target = typeof openChat === 'object' && openChat && tab === 'chat'
+    ? { to: { projectUuid, userId: openChat.userId } }
+    : { conversationUuid: key };
+  const r = await callTool('conversation_send', { ...target, body, clientMutationId: mutationId(`${key}:${draftNonce[key]}`, body) });
+  sending = false;
+  if (!r.ok) {
+    // The draft and its key stay: pressing again retries the same message, which the server stores once.
+    note = { text: sendError(r), error: true };
+    render();
+    return;
+  }
+  const sent = r.data ?? {};
+  delete draftNonce[key];
+  saveDraft(key, '');
+  input.value = '';
+  host.room?.presence({ typingIn: null }).catch?.(() => {});
+  note = { text: '', error: false };
+  if (sent.conversationUuid && sent.seq) {
+    known = { ...known, [sent.conversationUuid]: Math.max(known[sent.conversationUuid] ?? 0, Number(sent.seq)) };
+    host.room?.emit(signalOf(sent.conversationUuid, sent.seq)).catch?.(() => {});
+  }
+  if (tab === 'chat' && typeof openChat === 'object' && sent.conversationUuid) {
+    openChat = sent.conversationUuid;
+    followConversation();
+  } else if (sent.conversationUuid) {
+    refresh('conversation_get_messages', messageArgs(sent.conversationUuid));
+  }
+  refresh('conversation_list', listArgs());
+  render();
+}
+
+function sendError(r) {
+  if (/RECIPIENT_NOT_PROJECT_MEMBER/.test(r.error)) return '상대가 이 프로젝트 구성원이 아니어서 보낼 수 없습니다';
+  if (/403|forbidden|edit rights|permission/i.test(r.error)) return '이 프로젝트에서 메시지를 보낼 권한이 없습니다 (보기 권한은 읽기만)';
+  return '보내지 못했습니다: ' + r.error + (r.code === 'server_unavailable' ? ' — 다시 누르면 같은 메시지로 다시 보냅니다' : '');
+}
+
+async function markAlertRead(card) {
+  const r = await callTool('mark_notifications_read', { items: [{ id: card.id, seq: card.seq }] });
+  if (!r.ok) {
+    showError(r, '확인 처리하지 못했습니다');
+    return;
+  }
+  refresh('list_notifications', alertArgs());
+  refresh('get_my_work_summary', summaryArgs());
+}
+
+/** «AI에게»: hands the item to the viewer's own AI. Runs inside the click, before anything is awaited. */
+function askAi(ctx) {
+  let sent;
+  try {
+    sent = host.sendToClaude(ctx);
+  } catch (err) {
+    sent = Promise.reject(err);
+  }
+  Promise.resolve(sent).then(
+    (where) => flash(where === 'pane' || !where ? '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요' : 'Claude 로 보냈습니다 — 대화를 확인하세요'),
+    (err) => flash(askError(err), true),
+  );
+}
+
+function askError(err) {
+  if (err?.code === 'claude_unavailable') return '지금 받을 Claude 대화가 없습니다. 이 패널을 대화 옆에 열고 다시 누르세요';
+  if (err?.code === 'rate_limited') return '너무 자주 보냈습니다. 잠시 뒤 다시 누르세요';
+  return 'AI에게 보내지 못했습니다: ' + (err?.message ?? err);
+}
+
+async function updateCanAsk() {
+  const before = canAsk;
+  try {
+    canAsk = Boolean(host.sendToClaude) && (host.canSendToClaude ? await host.canSendToClaude() : true);
+  } catch {
+    canAsk = false;
+  }
+  if (canAsk !== before) render();
+}
+
+// ── Messages for the viewer ──
+
+const WHY_SECTION = {
+  not_in_manifest: '이 아티팩트에 이 AiNecto 도구가 허용되지 않았습니다',
+  approval_required: '이 도구는 «항상 허용»이어야 패널에서 쓸 수 있습니다 (커넥터 도구 권한)',
+};
+
+function showError(r, prefix) {
+  const text = `${prefix}: ${r.error}`;
+  const fixable = ['not_in_manifest', 'approval_required'].includes(r.code) && host.managePermissions;
+  banner = { text: WHY_SECTION[r.code] ? `${prefix} — ${WHY_SECTION[r.code]}` : text, error: true, action: fixable ? ['권한 설정 열기', () => host.managePermissions()] : null };
+  render();
+}
+
+function clearBanner() {
+  if (banner?.error) {
+    banner = null;
     render();
   }
 }
 
-/** The timer's tick: read only while the panel is shown. */
-function tick() {
-  if (document.visibilityState === 'hidden') return;
-  poll();
-}
-
-async function markRead(row) {
-  const items = readItems([row.item]);
-  if (!items.length) return;
-  const r = await callTool('mark_notifications_read', { items });
-  if (!r.ok) {
-    flash('읽음 처리 실패: ' + r.error);
-    return;
-  }
-  notifications = applyRead(notifications, r.data?.results);
-  if (view) view = { ...view, mentions: applyRead(view.mentions, r.data?.results) };
+let flashTimer = null;
+function flash(text, error = false) {
+  banner = { text, error };
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
+    if (banner?.text === text) {
+      banner = null;
+      render();
+    }
+  }, 6000);
   render();
-  await poll();
-}
-
-async function sendReply(row, text) {
-  const body = String(text ?? '').trim();
-  const target = replyTarget(row.item);
-  if (!body || !target) return;
-  const parent = target.cardUuid ? { cardUuid: target.cardUuid } : { documentUuid: target.documentUuid };
-  // Replies are one level deep: answer under the thread's top-level comment.
-  const listed = await callTool('list_comments', parent);
-  const root = listed.ok ? threadRoot(listed.data?.comments, target.commentId) : null;
-  if (!root) {
-    flash('원래 댓글을 찾지 못했습니다' + (listed.ok ? '' : ': ' + listed.error));
-    return;
-  }
-  const r = await callTool('create_comments', {
-    ...parent,
-    items: [{ body, parentCommentId: root, clientMutationId: mutationId(row.id, body) }],
-  });
-  const result = r.ok ? r.data?.results?.[0] : null;
-  if (!result?.ok) {
-    flash('답글 실패: ' + (result?.error ?? r.error ?? 'unknown'));
-    return;
-  }
-  replying = null;
-  renderReply();
-  flash('답글을 달았습니다');
-}
-
-async function askAi(row) {
-  try {
-    await host.askAi(row);
-    flash('대화창에 보냈습니다');
-  } catch (err) {
-    flash('대화창에 보내지 못했습니다: ' + (err?.message ?? err));
-  }
 }
 
 // ── Drawing ──
-
-function flash(text) {
-  notice = text;
-  clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(() => {
-    notice = '';
-    renderHead();
-  }, QUICK_RETRY_MS);
-  renderHead();
-}
 
 function el(tag, props = {}, children = []) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(props)) {
     if (k === 'onClick') {
       if (v) node.addEventListener('click', v);
-    }
-    else if (k === 'className') node.className = v;
+    } else if (k === 'className') node.className = v;
     else if (v !== undefined && v !== null && v !== false) node.setAttribute(k, v === true ? '' : String(v));
   }
   for (const c of [].concat(children)) {
@@ -211,137 +420,319 @@ function el(tag, props = {}, children = []) {
   return node;
 }
 
-function clock(ms) {
-  if (!ms) return '—';
-  const d = new Date(ms);
-  return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+function link(url, text, className) {
+  const onClick = host.openLink
+    ? (event) => {
+        event.preventDefault();
+        host.openLink(url);
+      }
+    : undefined;
+  return el('a', { className, href: url, target: '_blank', rel: 'noopener', onClick }, text);
 }
 
-function renderHead() {
-  const head = $('head');
-  if (error) {
-    head.className = 'head error';
-    head.textContent = '⚠ ' + error;
-  } else {
-    head.className = 'head';
-    head.textContent =
-      (view ? '● 연결됨' : '○ 연결 중') +
-      ' · ' + clock(lastSyncAt) + ' 동기화' +
-      (view ? ' · 안 읽음 ' + view.unread + (view.unreadCapped ? '+' : '') : '');
-  }
-  $('notice').textContent = notice;
-  $('notice').hidden = !notice;
-}
-
-function renderReply() {
-  const box = $('reply');
-  box.hidden = !replying;
-  if (!replying) return;
-  $('reply-target').textContent = '↳ ' + replying.title;
-  const input = $('reply-input');
-  input.value = '';
-  input.focus();
-}
-
-function rowView(row) {
-  const buttons = [];
-  if (row.url) {
-    const onClick = host.openLink
-      ? (event) => {
-          event.preventDefault();
-          host.openLink(row.url);
-        }
-      : undefined;
-    buttons.push(el('a', { className: 'link', href: row.url, target: '_blank', rel: 'noopener', onClick }, '열기'));
-  }
-  if (row.actions.includes('read')) buttons.push(el('button', { className: 'link', onClick: () => markRead(row) }, '확인'));
-  if (row.actions.includes('reply')) {
-    buttons.push(
+function renderTabs() {
+  const counts = tabCounts(conv, { unread: unreadAlerts });
+  $('tabs').replaceChildren(
+    ...PANEL_TABS.map(([id, label]) =>
       el('button', {
-        className: 'link',
-        onClick: () => {
-          replying = row;
-          renderReply();
-        },
-      }, '답하기'),
-    );
+        type: 'button',
+        className: tab === id ? 'tab active' : 'tab',
+        'aria-current': tab === id ? 'page' : null,
+        onClick: () => selectTab(id),
+      }, [label, counts[id] ? el('span', { className: id === 'alerts' ? 'badge' : 'badge strong' }, String(counts[id])) : null]),
+    ),
+  );
+}
+
+function selectTab(id) {
+  if (tab === id && id === 'chat' && openChat) openChat = null;
+  tab = id;
+  popoverOpen = false;
+  onConversationChange();
+}
+
+function onConversationChange() {
+  followConversation();
+  const key = draftKey();
+  $('compose-input').value = key ? loadDraft(key) : '';
+  note = { text: '', error: false };
+  host.room?.presence({ typingIn: null, viewing: shownConversationUuid() }).catch?.(() => {});
+  render();
+  updateCanAsk();
+}
+
+function renderBanner() {
+  const b = $('banner');
+  b.hidden = !banner;
+  if (!banner) return;
+  b.className = banner.error ? 'banner error' : 'banner';
+  b.replaceChildren(...[el('span', {}, banner.text), banner.action ? el('button', { type: 'button', onClick: banner.action[1] }, banner.action[0]) : null].filter(Boolean));
+}
+
+function renderConversation() {
+  const view = $('view-conversation');
+  const c = shownConversation();
+  const draft = tab === 'chat' && openChat && typeof openChat === 'object';
+  view.hidden = !(c || draft);
+  if (view.hidden) return;
+  const direct = draft || c?.type === 'DIRECT';
+  const name = draft ? openChat.name : direct ? c.name || '개인 챗' : conv.projectName || c?.name || '프로젝트 룸';
+  $('conv-head').replaceChildren(
+    ...[direct ? el('button', { type: 'button', className: 'back', 'aria-label': '챗 목록', onClick: () => { openChat = null; onConversationChange(); } }, '‹') : null,
+    el('div', { className: 'icon', 'aria-hidden': 'true' }, direct ? initialOf(name) : '#'),
+    el('div', { className: 'head-text' }, [
+      el('div', { className: 'head-title' }, name),
+      el('div', { className: 'head-meta' }, direct ? '개인 챗' : `프로젝트 룸 · 멤버 ${conv.memberCount}명`),
+    ]),
+  ].filter(Boolean));
+  renderTimeline(c, direct, draft);
+  $('typing').textContent = typingNames.length ? `${typingNames.join(', ')} 입력 중…` : '';
+  const input = $('compose-input');
+  input.placeholder = direct ? `${name}님에게 메시지 보내기` : '프로젝트 룸에 메시지 보내기';
+  $('compose-send').disabled = sending || !input.value.trim();
+  const n = $('compose-note');
+  n.className = note.error ? 'compose-note error' : 'compose-note';
+  n.textContent = note.text || 'Enter 보내기 · Shift+Enter 줄바꿈';
+}
+
+function renderTimeline(c, direct, draft) {
+  const box = $('timeline');
+  const scroller = $('conv-scroll');
+  const atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
+  if (draft) {
+    box.replaceChildren(el('div', { className: 'empty' }, `${openChat.name}님과의 첫 메시지를 보내면 챗이 시작됩니다`));
+    return;
   }
-  if (host.askAi && (row.item?.target || row.url)) {
-    buttons.push(el('button', { className: 'link', onClick: () => askAi(row) }, 'AI에게'));
+  if (!page) {
+    box.replaceChildren(el('div', { className: 'empty' }, '불러오는 중…'));
+    return;
   }
-  return el('li', { className: row.unread ? 'row unread' : 'row' }, [
-    el('div', { className: 'title' }, (row.unread ? '● ' : '○ ') + row.title),
-    el('div', { className: 'meta' }, [el('span', { className: 'detail' }, row.detail || ' '), ...buttons]),
+  if (!messages.length) {
+    box.replaceChildren(el('div', { className: 'empty' }, direct ? '아직 메시지가 없습니다' : '프로젝트 룸에 첫 메시지를 남겨 보세요'));
+    return;
+  }
+  const now = Date.now();
+  const nodes = [];
+  let day = '';
+  for (const m of messages) {
+    const d = dayKo(m.at, now);
+    if (d && d !== day) {
+      day = d;
+      nodes.push(el('div', { className: 'date' }, d));
+    }
+    nodes.push(messageView(m, c, direct));
+  }
+  box.replaceChildren(...nodes);
+  if (atBottom || !box.dataset.shown) scroller.scrollTop = scroller.scrollHeight;
+  box.dataset.shown = '1';
+}
+
+function messageView(m, c, direct) {
+  const mine = me && m.author?.userId === me.userId;
+  const author = m.author?.displayName || '탈퇴한 사용자';
+  const ask = canAsk && !mine
+    ? el('button', { type: 'button', className: 'ask-link', onClick: () => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } })) }, 'AI에게')
+    : null;
+  if (mine) {
+    const read = readLabel(m, page?.type, me.userId);
+    return el('article', { className: 'msg mine' }, el('div', { className: 'msg-body' }, [
+      el('div', { className: 'bubble' }, m.body ?? ''),
+      el('div', { className: 'receipt' }, [read ? el('span', { className: 'read' }, read) : null, el('time', {}, clockKo(m.at))]),
+    ]));
+  }
+  return el('article', { className: 'msg' }, [
+    el('div', { className: 'avatar', 'aria-hidden': 'true' }, initialOf(author)),
+    el('div', { className: 'msg-body' }, [
+      el('div', { className: 'sender' }, [author, el('time', {}, clockKo(m.at)), ask]),
+      el('div', { className: 'bubble' }, m.body ?? ''),
+    ]),
   ]);
 }
 
-function render() {
-  renderHead();
-  const tabs = buildTabs({ view, notifications });
-  const counts = {
-    notifications: view ? view.unread : 0,
-    comments: tabs.comments.filter((r) => r.unread).length,
-    work: view ? view.cardCounts.assignedOpen : 0,
-  };
-  $('tabs').replaceChildren(
-    ...TABS.map(([id, label]) =>
-      el('button', {
-        className: tab === id ? 'tab active' : 'tab',
-        'aria-pressed': tab === id ? 'true' : 'false',
-        onClick: () => {
-          tab = id;
-          replying = null;
-          renderReply();
-          render();
-        },
-      }, `${label} ${counts[id]}`),
-    ),
-    el('button', { className: 'tab sync', onClick: () => poll() }, '동기화'),
+function renderChats() {
+  const view = $('view-chats');
+  view.hidden = !(tab === 'chat' && !openChat);
+  if (view.hidden) return;
+  const now = Date.now();
+  const rows = conv.chats.map((c) =>
+    el('li', {}, el('button', { type: 'button', className: 'row', onClick: () => { openChat = c.conversationUuid; onConversationChange(); } }, [
+      el('div', { className: 'icon', 'aria-hidden': 'true' }, initialOf(c.name)),
+      el('div', { className: 'row-text' }, [
+        el('div', { className: 'row-top' }, [el('strong', {}, c.name || '이름 없음'), el('time', {}, c.lastMessage ? whenKo(c.lastMessage.at, now) : '')]),
+        el('div', { className: 'row-bottom' }, [
+          el('span', {}, c.lastMessage ? (c.lastMessage.author?.userId === me?.userId ? '나: ' : '') + (c.lastMessage.preview ?? '') : '메시지 없음'),
+          c.unreadCount ? el('span', { className: 'badge strong' }, String(c.unreadCount)) : null,
+        ]),
+      ]),
+    ])),
   );
-  const workHead = $('work-head');
-  workHead.hidden = !(tab === 'work' && view);
-  if (tab === 'work' && view) {
-    const c = view.cardCounts;
-    workHead.textContent = `수락 대기 ${c.pendingAcceptance} · 진행 ${c.inProgress} · 검토 ${c.inReview} · 막힘 ${c.blocked}`;
+  $('chat-rows').replaceChildren(...(rows.length ? rows : [el('li', { className: 'empty' }, conv.members.length ? '«＋ 새 챗» 으로 프로젝트 멤버와 챗을 시작하세요' : '이 프로젝트에는 아직 다른 멤버가 없습니다')]));
+  $('new-chat').setAttribute('aria-expanded', popoverOpen ? 'true' : 'false');
+  $('new-chat-popover').hidden = !popoverOpen;
+  if (popoverOpen) renderMembers();
+}
+
+function renderMembers() {
+  const q = $('member-search').value.trim().toLowerCase();
+  const people = conv.members.filter((m) => !q || String(m.displayName ?? '').toLowerCase().includes(q));
+  $('member-list').replaceChildren(
+    ...(people.length
+      ? people.map((m) =>
+          el('div', { className: 'person' }, [
+            el('div', { className: 'icon', 'aria-hidden': 'true' }, initialOf(m.displayName)),
+            el('div', { className: 'person-text' }, [el('strong', {}, m.displayName || '이름 없음'), el('small', {}, m.jobTitle || `${conv.projectName} 멤버`)]),
+            el('button', { type: 'button', className: 'chip', onClick: () => startChat(m) }, '챗 시작'),
+          ]),
+        )
+      : [el('div', { className: 'empty' }, conv.members.length ? '찾는 멤버가 없습니다' : '다른 멤버가 없습니다')]),
+  );
+}
+
+function startChat(member) {
+  const existing = conv.chats.find((c) => c.withUserId === member.userId);
+  openChat = existing ? existing.conversationUuid : { userId: member.userId, name: member.displayName || '이름 없음' };
+  popoverOpen = false;
+  onConversationChange();
+  $('compose-input').focus();
+}
+
+function renderAlerts() {
+  const view = $('view-alerts');
+  view.hidden = tab !== 'alerts';
+  if (view.hidden) return;
+  $('alerts-count').textContent = `미확인 ${unreadAlerts}`;
+  const now = Date.now();
+  $('cards').replaceChildren(
+    ...(cards.length
+      ? cards.map((card) => cardView(card, now))
+      : [el('div', { className: 'empty' }, syncedAt ? '이 프로젝트의 알림이 없습니다' : '불러오는 중…')]),
+  );
+}
+
+function cardView(card, now) {
+  const actions = [];
+  if (card.openChat) {
+    actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => { tab = 'chat'; openChat = card.openChat; onConversationChange(); } }, '챗 열기'));
+  } else if (card.button && canAsk) {
+    actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => askAi(contextForClaude({ projectUuid, card })) }, [el('span', { 'aria-hidden': 'true' }, '✧'), card.button, el('span', { 'aria-hidden': 'true' }, '↗')]));
+    actions.push(el('div', { className: 'hint' }, '현재 AI 대화에서 이어서 검토'));
   }
-  const rows = tabs[tab] ?? [];
-  $('rows').replaceChildren(
-    ...(rows.length ? rows.map(rowView) : [el('li', { className: 'empty' }, view ? '표시할 항목이 없습니다' : '불러오는 중…')]),
+  const links = [];
+  if (card.url) links.push(link(card.url, '원문 열기', 'text-link'));
+  if (card.unread) links.push(el('button', { type: 'button', className: 'text-link', onClick: () => markAlertRead(card) }, '확인'));
+  if (links.length) actions.push(el('div', { className: 'card-links' }, links));
+  return el('article', { className: card.unread ? 'card unread' : 'card', 'aria-label': `${card.head} 알림` }, [
+    el('div', { className: 'card-head' }, [
+      el('span', { className: 'card-mark', 'aria-hidden': 'true' }, card.mark),
+      el('span', {}, card.head),
+      card.unread ? el('span', { className: 'dot', 'aria-label': '미확인' }) : null,
+      el('time', {}, whenKo(card.at, now)),
+    ]),
+    el('div', { className: 'card-body' }, [
+      card.label ? el('div', { className: 'card-label' }, card.label) : null,
+      card.title ? el('div', { className: 'card-title' }, card.title) : null,
+      card.path ? el('div', { className: 'card-path' }, card.path) : null,
+      card.copy ? el('div', { className: 'card-copy' }, card.copy) : null,
+      actions.length ? el('div', { className: 'card-actions' }, actions) : null,
+    ]),
+  ]);
+}
+
+function renderFoot() {
+  const name = me?.displayName || '';
+  $('foot').replaceChildren(
+    el('span', { className: 'me', 'aria-hidden': 'true' }, initialOf(name)),
+    el('span', {}, name || '연결 중'),
+    el('span', { className: 'where' }, [conv.projectName, syncedAt ? `${clockKo(new Date(syncedAt).toISOString())} 동기화` : null].filter(Boolean).join(' · ')),
   );
-  $('foot').textContent = hostName ? `AiNecto 패널 · ${hostName}` : 'AiNecto 패널';
+}
+
+function render() {
+  renderTabs();
+  renderBanner();
+  renderConversation();
+  renderChats();
+  renderAlerts();
+  renderFoot();
 }
 
 // ── Start ──
 
 function wire() {
+  const input = $('compose-input');
   // No <form>: hosts sandbox the panel without allow-forms, and a blocked form never fires submit.
-  const send = () => {
-    if (replying) sendReply(replying, $('reply-input').value);
-  };
-  $('reply-send').addEventListener('click', send);
-  $('reply-input').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing) {
+  $('compose-send').addEventListener('click', () => send());
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       send();
     }
   });
-  $('reply-cancel').addEventListener('click', () => {
-    replying = null;
-    renderReply();
+  input.addEventListener('input', () => {
+    const key = draftKey();
+    if (key) saveDraft(key, input.value);
+    $('compose-send').disabled = sending || !input.value.trim();
+    const c = shownConversationUuid();
+    if (c) host.room?.presence({ typingIn: input.value.trim() ? c : null }).catch?.(() => {});
+  });
+  input.addEventListener('blur', () => host.room?.presence({ typingIn: null }).catch?.(() => {}));
+  $('new-chat').addEventListener('click', () => {
+    popoverOpen = !popoverOpen;
+    render();
+    if (popoverOpen) $('member-search').focus();
+  });
+  $('member-search').addEventListener('input', () => renderMembers());
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && popoverOpen) {
+      popoverOpen = false;
+      render();
+    }
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && (!lastSyncAt || Date.now() - lastSyncAt >= POLL_MS)) poll();
+    if (document.visibilityState !== 'visible') return;
+    const c = shownConversationUuid();
+    if (c) markSeen(c);
+    updateCanAsk();
   });
-
 }
 
-/** A tool result the host already has (the tool that opened the panel returns get_my_work_summary's body). */
+/** A tool result the host already has: the tool that opened the panel names the project (open_ainecto_panel). */
 function showToolResult(result) {
   const parsed = parseToolResult(result);
-  if (parsed.ok && parsed.data && typeof parsed.data === 'object' && 'notifications' in parsed.data) {
-    useSummary(parsed.data);
+  const uuid = parsed.ok ? parsed.data?.panel?.projectUuid : null;
+  if (!uuid || projectUuid) return;
+  if (ready) useProject(uuid);
+  else pendingProject = uuid;
+}
+
+function useProject(uuid) {
+  projectUuid = uuid;
+  banner = null;
+  subscribe('conversation_list', listArgs(), (data) => {
+    conv = conversationsView(data, me?.userId);
+    passOn(data?.conversations);
+    if (tab === 'chat' && typeof openChat === 'object' && openChat) {
+      const started = conv.chats.find((c) => c.withUserId === openChat.userId);
+      if (started) openChat = started.conversationUuid;
+    }
+    followConversation();
     render();
-  }
+  }, (err) => {
+    if (/404|not found|403|forbidden/i.test(err.error)) banner = { text: '이 프로젝트를 열 수 없습니다 — 구성원이 아니거나 프로젝트가 없어졌습니다', error: true };
+    else showError(err, '대화 목록을 읽지 못했습니다');
+    render();
+  });
+  subscribe('get_my_work_summary', summaryArgs(), (data) => {
+    unreadAlerts = Number(data?.notifications?.unread ?? 0);
+    render();
+  }, (err) => showError(err, '알림 수를 읽지 못했습니다'));
+  subscribe('list_notifications', alertArgs(), (data) => {
+    cards = alertCards(data?.items);
+    render();
+  }, (err) => showError(err, '알림을 읽지 못했습니다'));
+  const key = draftKey();
+  if (key) $('compose-input').value = loadDraft(key);
+  render();
 }
 
 /** Draws the panel and starts reading through `host` (see the top of this file). */
@@ -349,14 +740,38 @@ export async function startPanel(theHost) {
   host = theHost;
   wire();
   render();
+  let connected;
   try {
-    hostName = (await host.connect({ showToolResult, stop: () => (stopped = true) })) ?? '';
+    connected = await host.connect({ showToolResult, stop: () => (stopped = true) });
   } catch (err) {
-    error = '호스트 연결 실패: ' + (err?.message ?? err);
+    banner = { text: '연결하지 못했습니다: ' + (err?.message ?? err), error: true };
     render();
     return;
   }
-  render();
-  setInterval(tick, POLL_MS);
-  poll();
+  hostName = connected?.name ?? '';
+  console.info(`[ainecto-panel] connected: ${hostName}`);
+  const self = await callTool('identity_get_self', {});
+  if (self.ok) me = { userId: self.data?.userId, displayName: self.data?.displayName };
+  else showError(self, '내 정보를 읽지 못했습니다');
+  host.room?.on(onSignal);
+  host.room?.onReconnect(() => {
+    if (!projectUuid) return;
+    refresh('conversation_list', listArgs());
+    const c = shownConversationUuid();
+    if (c) refresh('conversation_get_messages', messageArgs(c));
+  });
+  host.room?.onPeers(async (peers) => {
+    const ids = typingIn(peers, shownConversationUuid());
+    const names = ids.length && host.room.names ? await host.room.names(ids) : {};
+    typingNames = ids.map((id) => names[id] || '누군가');
+    renderConversation();
+  });
+  ready = true;
+  const project = connected?.projectUuid ?? pendingProject;
+  if (project) useProject(project);
+  else {
+    banner = { text: '어느 프로젝트의 패널인지 정해지지 않았습니다. 대화에서 프로젝트 이름을 말하고 패널을 다시 열어 주세요', error: false };
+    render();
+  }
+  updateCanAsk();
 }

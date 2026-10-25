@@ -27,8 +27,7 @@ Code. It talks only to the AiNecto MCP server you already connected (`npx -y ain
 
 - **Numbers**: `get_my_work_summary` every 30 seconds. It is read-only and has no rate limit.
 - **Notification list**: `list_notifications`, only when the unread number changes (and while it catches up
-  on a backlog). That tool allows one call per 30 seconds per connection, and the agent in your session
-  shares that connection, so the pane calls it rarely and waits out `retryAfterSeconds`.
+  on a backlog).
 - **The agent's reading position is never moved.** The pane never sends `ack` and never asks for
   `latest`. Its first read uses `saved` (which reads from the connection's position without moving it), and
   after that it reads on from its own `nextCursor`, kept in the plugin store — the server neither reads
@@ -94,12 +93,17 @@ npm run test:panel   # the mod itself, with `claude plugin test` (no session, no
 - `hooks/register.js` holds the hooks, the reading loop, and the drawing.
 - `.claude-plugin/plugin.json` is generated from `plugin-src/listing.json` (`panel`); do not edit it by hand.
 
-## The same panel in ChatGPT, the Codex app and Claude (MCP App)
+## The project panel in ChatGPT, the Codex app and Claude (MCP App)
 
-Hosts that render [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) open the same three tabs from
-the AiNecto MCP server itself: the tool `open_ainecto_panel` shows the resource `ui://ainecto/panel`, and
-ChatGPT and the Codex app also list it beside a conversation and in the sidebar. Nothing to install: connect
-the AiNecto MCP server and ask for the AiNecto panel (or open it from the host's app list).
+The MCP App and the Claude artifact below share one screen (`mcp-app/panel.js`) and the data rules in
+`hooks/inbox.js`: **one AiNecto project** in three tabs — **룸** (the project room), **챗** (direct chats with the
+project's members, «＋ 새 챗»), **알림** (that project's notifications as cards, «AI에게 검토 요청»). The Claude Code
+pane above still has its own notifications · comments · work tabs.
+
+Hosts that render [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) open it from the AiNecto MCP server
+itself: `open_ainecto_panel` shows the resource `ui://ainecto/panel`, and the project is the one that call chose
+(`panel.projectUuid` in its result). Without watch support in MCP Apps the screen reads again every 30 seconds while
+shown; «AI에게» puts the item in the conversation as quoted text (`ui/message`).
 
 The HTML is built here and served by ainecto-api, which keeps a copy:
 
@@ -112,24 +116,30 @@ npm run copy:app -- ../ainecto-api         # copy the HTML and its .sha256 into 
 copy no longer matches the `.sha256` that came with it. Commit the copy in ainecto-api with the commit of this
 repository it came from.
 
-## The same panel beside a Claude conversation (artifact)
+## The project panel beside a Claude conversation (artifact)
 
-In Claude web and desktop an MCP App opens inside the conversation and scrolls away with it. A Claude
-artifact opens beside the conversation and stays there, and the artifact runtime's `mcp` capability calls
-the viewer's own claude.ai connector (`claude.use("mcp")` → `callTool`). `mcp-app/dist/ainecto-panel-artifact.html`
-is the same screen and data rules (`mcp-app/panel.js`, `hooks/inbox.js`) with that host (`mcp-app/artifact-host.js`)
-instead of the MCP Apps bridge. It has no «AI에게» button: an artifact cannot write into the conversation.
+In Claude web and desktop an artifact opens beside the conversation and stays there. One artifact per AiNecto project
+(design `claude-artifact-chat-design` §4), everything through the artifact runtime: `mcp` with the viewer's own
+connector (`watchTool` keeps reads current, `invalidate` re-reads now), `room` (after a message is stored the sender
+puts `{c, s, k}` — conversation, seq, kind, no body — on topic `conv`, and everyone with the panel open reads again;
+«입력 중» is presence; «AI에게» is `sendToClaudeSession` to the viewer's own Claude) and `user` (names of people typing).
 
-Publish it as an artifact with the `mcp` capability naming the connector by its claude.ai display name and
-exactly the tools in `PANEL_TOOLS` (`mcp-app/panel.js`):
+Export it for one project, then publish the file with the capabilities the export writes:
 
-```json
-{ "mcp": { "servers": [{ "server": "AiNecto dev",
-  "tools": ["get_my_work_summary", "list_notifications", "mark_notifications_read", "list_comments", "create_comments"] }] } }
+```bash
+npm run export:artifact -- --project <project uuid> --out /tmp/panel.html --server <connector>
+# → /tmp/panel.html (the project uuid in its one slot) and /tmp/panel.capabilities.json:
+#   { mcp: { servers: [{ server: <connector>, tools: PANEL_TOOLS }] }, room: { topics: { conv: "interact" } },
+#     user: { scopes: ["profile"] } }
 ```
 
-The page finds the connector from that manifest (the server that lists `get_my_work_summary`), so the page
-itself names no server. Needs a Pro, Max, Team or Enterprise plan; each viewer approves the tools on first use,
-and a tool whose connector permission is «Needs approval» is not available to artifacts (set the two write
-tools to «Always allow»).
+`--server` is the connector as the publishing session names it (the Artifact tool resolves it to the display name);
+the page itself names no server and takes the manifest server that lists `get_my_work_summary`. After publishing,
+register the link on the project with `update_projects` (`panelArtifactUrl`, project admins), so
+`open_ainecto_panel` hands the same link to everyone. Each viewer needs the AiNecto connector with its write tools
+(`conversation_send`, `conversation_mark_read`, `mark_notifications_read`) on «Always allow»: a tool that needs approval
+is not available to artifacts. Share the artifact with the organization as Contributor so viewers can send signals.
 
+```bash
+AINECTO_PLAYWRIGHT_FROM=../ainecto-front npm run test:artifact   # the exported page in Chromium with a stand-in runtime
+```

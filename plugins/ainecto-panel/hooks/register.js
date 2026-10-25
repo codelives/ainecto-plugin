@@ -4,9 +4,7 @@
 //
 // Reading rules (why the loop looks like this):
 // - The numbers come from get_my_work_summary every POLL_MS. It has no rate limit and marks nothing.
-// - list_notifications has a 30-second limit per user and connection, shared with the agent on the
-//   same connection, so the pane reads it only when the unread number changed (or a backlog page is
-//   waiting) and waits out retryAfterSeconds.
+// - list_notifications is read only when the unread number changed (or a backlog page is waiting).
 // - The pane never sends `ack` and never uses `latest`: it keeps the nextCursor it was given and reads
 //   on from it, which the server neither reads nor moves. So the agent's own position is untouched.
 import {
@@ -39,7 +37,6 @@ let notifications = []
 let cursor = null
 let hasMore = false
 let lastUnread = null
-let retryAt = 0
 let lastSyncAt = null
 let error = null
 let failure = null // { server, error }: why the last summary read failed, shown in the pane
@@ -144,10 +141,6 @@ async function fetchList($) {
     return
   }
   const data = r.data ?? {}
-  if (data.retryAfterSeconds) {
-    retryAt = (await $.clock.now()) + Number(data.retryAfterSeconds) * 1000
-    return
-  }
   const merged = mergeNotifications(notifications, data.items)
   notifications = merged.items
   if (data.nextCursor) {
@@ -185,9 +178,8 @@ async function poll($) {
     error = null
     failure = null
     quickRetries = 0
-    const now = await $.clock.now()
-    lastSyncAt = now
-    if (shouldFetchList({ unread: view.unread, lastUnread, hasMore, now, retryAt })) await fetchList($)
+    lastSyncAt = await $.clock.now()
+    if (shouldFetchList({ unread: view.unread, lastUnread, hasMore })) await fetchList($)
   } finally {
     busy = false
     $.ui.status(statusText(view, error))

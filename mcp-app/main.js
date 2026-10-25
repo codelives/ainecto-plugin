@@ -1,8 +1,9 @@
 // The panel's host for MCP Apps hosts (ChatGPT web and desktop, the Codex app, Claude conversations): the
 // host proxies tools/call to the AiNecto MCP server with the user's own connection (bridge.js). Built into
 // mcp-app/dist/ainecto-panel.html, which ainecto-api serves as ui://ainecto/panel.
-import { askAiText, createBridge, initializeParams } from './bridge.js';
+import { createBridge, initializeParams } from './bridge.js';
 import { startPanel } from './panel.js';
+import { contextText } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 const VERSION = '0.1.0';
 
@@ -65,7 +66,7 @@ startPanel({
     applyHostContext(init?.hostContext);
     bridge.notify('ui/notifications/initialized', {});
     reportSize();
-    return init?.hostInfo?.name ?? '';
+    return { name: init?.hostInfo?.name ?? '' };
   },
   callTool: (name, args) => bridge.request('tools/call', { name, arguments: args }),
   async openLink(url) {
@@ -76,5 +77,5 @@ startPanel({
       window.open(url, '_blank', 'noopener');
     }
   },
-  askAi: (row) => bridge.request('ui/message', { role: 'user', content: { type: 'text', text: askAiText(row) } }),
+  sendToClaude: (ctx) => bridge.request('ui/message', { role: 'user', content: { type: 'text', text: contextText(ctx) } }).then(() => 'pane'),
 });

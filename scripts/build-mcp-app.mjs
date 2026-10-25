@@ -92,10 +92,21 @@ export function toArtifactPage(html) {
   return `${keep.join('\n')}\n${body.trim()}\n`;
 }
 
-/** Reads the sources and returns the artifact page { html }. */
+/**
+ * The artifact page's project slot: JSON the page reads at start (mcp-app/artifact.js). The committed build names no
+ * project; scripts/export-artifact.mjs fills it for the one project an artifact is published for.
+ */
+export const PROJECT_SLOT_ID = 'ainecto-project';
+export const projectSlot = (projectUuid) =>
+  `<script type="application/json" id="${PROJECT_SLOT_ID}">${JSON.stringify({ projectUuid })}</script>`;
+
+/** Reads the sources and returns the artifact page { html } (its project slot empty). */
 export function buildArtifact(root = ROOT) {
   const { banner, html } = page(root, 'Claude artifact', ARTIFACT_MODULES);
-  return { html: banner + toArtifactPage(html) };
+  const body = toArtifactPage(html);
+  const at = body.indexOf('\n<script>\n');
+  if (at < 0) throw new Error(`${TEMPLATE}: no inline <script> to put the project slot before`);
+  return { html: banner + body.slice(0, at + 1) + projectSlot(null) + body.slice(at) };
 }
 
 /** The .sha256 file content (the `sha256sum` format). */

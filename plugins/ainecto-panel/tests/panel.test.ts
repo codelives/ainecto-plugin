@@ -149,23 +149,6 @@ test('reads the list only when the number changes, from its own cursor, never la
   }
 })
 
-test('waits out retryAfterSeconds before reading the list again', async ($, on) => {
-  let limited = true
-  const state = {
-    unread: 1,
-    list: () => (limited ? { items: [], retryAfterSeconds: 45 } : { items: [], nextCursor: 'tok', hasMore: false }),
-  }
-  const s = stubs(on, state)
-  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
-  await s.clock.advance(1)
-  expect(listCalls(s.calls).length).toBe(1)
-  limited = false
-  await s.clock.advance(30_000) // 30 s < 45 s: still waiting
-  expect(listCalls(s.calls).length).toBe(1)
-  await s.clock.advance(30_000) // 60 s: allowed, and the number is still unconfirmed
-  expect(listCalls(s.calls).length).toBe(2)
-})
-
 test('the pane shows the numbers, marks one read, and replies under the thread root', async ($, on) => {
   const state = { unread: 2, list: () => ({ items: [note('a', 10)], nextCursor: 'tok1', hasMore: false }) }
   const s = stubs(on, state)

@@ -3,67 +3,180 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AiNecto 패널</title>
+<title>AiNecto 프로젝트 패널</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
+  /* Layout: one column the width of a side panel — tabs, then the open view (a conversation, the chat list or the
+     notification cards) filling the height, then the viewer's name. Violet accent from the AiNecto panel mockup. */
   :root {
-    color-scheme: light dark;
-    --bg: var(--color-background-primary, light-dark(#ffffff, #1b1b1b));
-    --bg-2: var(--color-background-secondary, light-dark(#f5f5f4, #262626));
-    --fg: var(--color-text-primary, light-dark(#1c1c1c, #f2f2f2));
-    --fg-2: var(--color-text-secondary, light-dark(#5f5f5f, #a8a8a8));
-    --danger: var(--color-text-danger, light-dark(#b42318, #ff8a7a));
-    --line: var(--color-border-tertiary, light-dark(#e7e5e4, #3a3a3a));
-    --accent: var(--color-text-info, light-dark(#1d4ed8, #8ab4ff));
-    --radius: var(--border-radius-md, 8px);
-    --font: var(--font-sans, system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif);
-    --size: var(--font-text-sm-size, 13px);
+    --bg: #ffffff;
+    --surface: #f4f4f8;
+    --surface-2: #faf8ff;
+    --fg: #20222c;
+    --fg-2: #6b7080;
+    --fg-3: #9a9eab;
+    --line: #e8e9ef;
+    --accent: #6e50b9;
+    --accent-fg: #ffffff;
+    --accent-soft: #eee9fc;
+    --accent-ink: #5b3fa6;
+    --mine: #eee9fc;
+    --mine-fg: #3f3463;
+    --danger: #b42318;
+    --danger-soft: #fdecea;
+    --radius: 10px;
+    --font: var(--font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif);
+    --size: 13px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17171c; --surface: #23232b; --surface-2: #211d2c; --fg: #ecebf2; --fg-2: #a9a8b8; --fg-3: #7d7c8c;
+      --line: #2f2f39; --accent: #a68cf0; --accent-fg: #17171c; --accent-soft: #2e2645; --accent-ink: #c6b5ff;
+      --mine: #2e2645; --mine-fg: #e6defc; --danger: #ff8a7a; --danger-soft: #3a1f1c; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #17171c; --surface: #23232b; --surface-2: #211d2c; --fg: #ecebf2; --fg-2: #a9a8b8; --fg-3: #7d7c8c;
+    --line: #2f2f39; --accent: #a68cf0; --accent-fg: #17171c; --accent-soft: #2e2645; --accent-ink: #c6b5ff;
+    --mine: #2e2645; --mine-fg: #e6defc; --danger: #ff8a7a; --danger-soft: #3a1f1c; color-scheme: dark;
   }
   :root[data-theme="light"] { color-scheme: light; }
-  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); background: var(--bg); color: var(--fg); font: var(--size)/1.45 var(--font); }
-  .head { color: var(--fg-2); margin-bottom: 8px; }
-  .head.error { color: var(--danger); }
-  .notice { background: var(--bg-2); border-radius: var(--radius); padding: 6px 10px; margin-bottom: 8px; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
-  .tab { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--fg-2); padding: 6px 8px; font: inherit; cursor: pointer; }
-  .tab.active { color: var(--fg); border-bottom-color: var(--fg); font-weight: 600; }
-  .tab.sync { margin-left: auto; }
-  .work-head { color: var(--fg-2); margin-bottom: 6px; }
-  .reply { background: var(--bg-2); border-radius: var(--radius); padding: 8px 10px; margin-bottom: 8px; }
-  .reply-target { color: var(--fg-2); margin-bottom: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .reply .reply-form { display: flex; gap: 6px; flex-wrap: wrap; }
-  .reply textarea { flex: 1 1 220px; min-height: 56px; resize: vertical; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
-  .reply button { font: inherit; padding: 4px 12px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--bg); color: var(--fg); cursor: pointer; align-self: flex-end; }
-  ul { list-style: none; margin: 0; padding: 0; }
-  .row { padding: 7px 0; border-bottom: 1px solid var(--line); }
-  .row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .row.unread .title { font-weight: 600; }
-  .row .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; padding-left: 14px; color: var(--fg-2); }
-  .row .detail { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .link { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: none; }
-  .link:hover { text-decoration: underline; }
-  .link:focus-visible, .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .empty { color: var(--fg-2); padding: 10px 0; }
-  .foot { color: var(--fg-2); margin-top: 10px; font-size: 0.9em; }
+  [hidden] { display: none !important; }
+  html[data-host="artifact"], html[data-host="artifact"] body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: var(--size)/1.55 var(--font); }
+  button, textarea, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .app { display: flex; flex-direction: column; min-height: 0; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  html[data-host="artifact"] .app { height: 100%; }
+  .tabs { display: flex; gap: 20px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .tab { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--fg-3); padding: 12px 2px 10px; display: flex; align-items: center; gap: 6px; }
+  .tab.active { border-bottom-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .badge { font-size: 10px; line-height: 17px; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent-soft); color: var(--accent-ink); text-align: center; font-variant-numeric: tabular-nums; }
+  .badge.strong { background: var(--accent); color: var(--accent-fg); }
+  .banner { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--surface); color: var(--fg-2); font-size: 12px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .banner.error { background: var(--danger-soft); color: var(--danger); }
+  .banner button { border: 0; background: none; color: inherit; text-decoration: underline; padding: 0; }
+  .view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+  .head { display: flex; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+  .head .back { border: 0; background: none; color: var(--fg-3); font-size: 20px; line-height: 1; padding: 2px 4px 2px 0; }
+  .head-text { flex: 1; min-width: 0; }
+  .head-title { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .head-meta { font-size: 11px; color: var(--fg-3); }
+  .icon { width: 32px; height: 32px; flex: 0 0 32px; display: grid; place-items: center; border-radius: 10px; background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; font-size: 13px; }
+  .scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  html:not([data-host="artifact"]) .scroll { max-height: 440px; }
+  .timeline { padding: 14px 0 6px; display: flex; flex-direction: column; gap: 14px; }
+  .date { display: flex; align-items: center; gap: 12px; color: var(--fg-3); font-size: 11px; }
+  .date::before, .date::after { content: ""; height: 1px; flex: 1; background: var(--line); }
+  .msg { display: flex; gap: 8px; align-items: flex-start; }
+  .msg .avatar { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 9px; display: grid; place-items: center; background: var(--surface); color: var(--fg-2); font-size: 11px; font-weight: 600; }
+  .msg-body { min-width: 0; max-width: calc(100% - 36px); }
+  .sender { font-size: 11px; font-weight: 600; color: var(--fg-2); margin-bottom: 3px; display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+  .sender time, .receipt time { font-weight: 400; color: var(--fg-3); font-size: 10px; }
+  .bubble { padding: 8px 12px; background: var(--surface); border-radius: 0 12px 12px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .msg.mine { justify-content: flex-end; }
+  .msg.mine .msg-body { max-width: 85%; }
+  .msg.mine .bubble { background: var(--mine); color: var(--mine-fg); border-radius: 12px 0 12px 12px; }
+  .receipt { display: flex; justify-content: flex-end; gap: 6px; margin-top: 3px; font-size: 10px; color: var(--fg-3); align-items: baseline; }
+  .receipt .read { color: var(--accent-ink); }
+  .ask-link { border: 0; background: none; padding: 0; color: var(--accent-ink); font-size: 10px; opacity: .75; }
+  .ask-link:hover, .ask-link:focus-visible { opacity: 1; text-decoration: underline; }
+  .typing { min-height: 18px; font-size: 11px; color: var(--fg-3); padding: 2px 2px 0; flex-shrink: 0; }
+  .compose { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; display: flex; gap: 8px; align-items: flex-end; flex-shrink: 0; background: var(--bg); }
+  .compose textarea { flex: 1; min-width: 0; min-height: 40px; max-height: 140px; resize: none; border: 0; background: transparent; padding: 2px; line-height: 1.55; }
+  .compose textarea:focus-visible { outline: none; }
+  .compose:focus-within { border-color: var(--accent); }
+  .send { width: 30px; height: 30px; flex: 0 0 30px; border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-fg); font-size: 16px; display: grid; place-items: center; }
+  .send:disabled { background: var(--surface); color: var(--fg-3); cursor: default; }
+  .compose-note { font-size: 11px; color: var(--fg-3); padding: 6px 2px 10px; min-height: 24px; flex-shrink: 0; }
+  .compose-note.error { color: var(--danger); }
+  .list-title { display: flex; align-items: center; justify-content: space-between; padding: 14px 0 8px; position: relative; flex-shrink: 0; }
+  .list-title h1 { font-size: 17px; font-weight: 600; margin: 0; }
+  .list-title .count { font-size: 11px; color: var(--fg-3); }
+  .new-chat { border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); color: var(--accent-ink); font-size: 12px; padding: 5px 9px; }
+  .popover { position: absolute; top: 46px; right: 0; width: min(280px, 100%); padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 32px rgba(32, 24, 64, .14); z-index: 10; display: flex; flex-direction: column; gap: 8px; }
+  .popover-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .popover-head span { font-size: 10px; color: var(--fg-3); }
+  .popover input { width: 100%; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+  .person { display: flex; align-items: center; gap: 9px; }
+  .person .icon { width: 28px; height: 28px; flex-basis: 28px; font-size: 11px; }
+  .person-text { flex: 1; min-width: 0; }
+  .person-text strong { display: block; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .person-text small { display: block; font-size: 10px; color: var(--fg-3); }
+  .chip { border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--accent-ink); font-size: 11px; padding: 4px 8px; }
+  .rows { list-style: none; margin: 0; padding: 0; }
+  .row { display: flex; gap: 10px; padding: 12px 8px; border-radius: 10px; width: 100%; border: 0; background: none; text-align: left; align-items: center; }
+  .row:hover { background: var(--surface-2); }
+  .row-text { flex: 1; min-width: 0; }
+  .row-top { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+  .row-top strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-top time { font-size: 10px; color: var(--fg-3); white-space: nowrap; }
+  .row-bottom { display: flex; gap: 8px; align-items: center; margin-top: 2px; }
+  .row-bottom span { flex: 1; min-width: 0; font-size: 11px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .empty { color: var(--fg-3); padding: 24px 4px; text-align: center; font-size: 12px; }
+  .cards { display: flex; flex-direction: column; gap: 12px; padding: 4px 0 14px; }
+  .card { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--bg); }
+  .card.unread { border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); }
+  .card-head { display: flex; align-items: center; gap: 7px; padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); font-size: 11px; color: var(--accent-ink); }
+  .card-mark { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5px; background: var(--accent-soft); font-size: 11px; }
+  .card-head time { margin-left: auto; color: var(--fg-3); font-size: 10px; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .card-body { padding: 12px; display: flex; flex-direction: column; gap: 4px; }
+  .card-label { font-size: 11px; color: var(--fg-2); }
+  .card-title { font-size: 14px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+  .card-path { font-size: 10px; color: var(--fg-3); }
+  .card-copy { font-size: 12px; color: var(--fg-2); overflow-wrap: anywhere; }
+  .card-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .ai-button { width: 100%; min-height: 34px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line)); border-radius: 8px; background: var(--surface-2); color: var(--accent-ink); font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 10px; }
+  .ai-button:hover { background: var(--accent-soft); }
+  .card-links { display: flex; gap: 14px; justify-content: center; font-size: 11px; }
+  .text-link { border: 0; background: none; padding: 0; color: var(--fg-2); text-decoration: none; font-size: 11px; }
+  .text-link:hover { color: var(--accent-ink); text-decoration: underline; }
+  .hint { font-size: 10px; color: var(--fg-3); text-align: center; }
+  .foot { display: flex; gap: 8px; align-items: center; padding: 10px 0 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--fg-2); flex-shrink: 0; flex-wrap: wrap; }
+  .foot .me { width: 22px; height: 22px; border-radius: 7px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-ink); font-size: 10px; font-weight: 600; }
+  .foot .where { margin-left: auto; color: var(--fg-3); font-size: 10px; letter-spacing: .03em; font-variant-numeric: tabular-nums; }
+  @media (prefers-reduced-motion: no-preference) { .row, .ai-button { transition: background-color .12s; } }
 </style>
 </head>
 <body>
-<div id="head" class="head">○ 연결 중</div>
-<div id="notice" class="notice" hidden></div>
-<nav id="tabs" class="tabs" aria-label="AiNecto"></nav>
-<div id="reply" class="reply" hidden>
-  <div id="reply-target" class="reply-target"></div>
-  <div class="reply-form">
-    <textarea id="reply-input" aria-label="답글" placeholder="답글을 입력하세요 (Ctrl/⌘+Enter 로 보내기)"></textarea>
-    <button type="button" id="reply-send">보내기</button>
-    <button type="button" id="reply-cancel">취소</button>
-  </div>
+<div class="app">
+  <nav id="tabs" class="tabs" aria-label="AiNecto 패널"></nav>
+  <div id="banner" class="banner" role="status" hidden></div>
+
+  <section id="view-conversation" class="view" aria-label="대화" hidden>
+    <div id="conv-head" class="head"></div>
+    <div id="conv-scroll" class="scroll"><div id="timeline" class="timeline" aria-live="polite"></div></div>
+    <div id="typing" class="typing"></div>
+    <div class="compose">
+      <textarea id="compose-input" rows="2" aria-label="메시지" placeholder="메시지 보내기"></textarea>
+      <button type="button" id="compose-send" class="send" aria-label="보내기" disabled>↑</button>
+    </div>
+    <div id="compose-note" class="compose-note">Enter 보내기 · Shift+Enter 줄바꿈</div>
+  </section>
+
+  <section id="view-chats" class="view" aria-label="챗" hidden>
+    <div class="list-title">
+      <h1>챗</h1>
+      <button type="button" id="new-chat" class="new-chat" aria-expanded="false">＋ 새 챗</button>
+      <div id="new-chat-popover" class="popover" hidden>
+        <div class="popover-head"><strong>새 챗</strong><span>프로젝트 멤버</span></div>
+        <input id="member-search" type="search" aria-label="챗할 멤버 찾기" placeholder="이름으로 찾기">
+        <div id="member-list"></div>
+      </div>
+    </div>
+    <div class="scroll"><ul id="chat-rows" class="rows"></ul></div>
+  </section>
+
+  <section id="view-alerts" class="view" aria-label="알림" hidden>
+    <div class="list-title"><h1>알림</h1><span id="alerts-count" class="count"></span></div>
+    <div class="scroll"><div id="cards" class="cards"></div></div>
+  </section>
+
+  <div id="foot" class="foot"></div>
 </div>
-<div id="work-head" class="work-head" hidden></div>
-<ul id="rows"></ul>
-<div id="foot" class="foot"></div>
 <script>
 /*@@BUNDLE@@*/
 </script>

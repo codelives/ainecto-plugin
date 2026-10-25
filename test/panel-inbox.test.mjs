@@ -136,14 +136,13 @@ test('mergeNotifications: dedupes by id, higher seq wins, redacted removes, newe
   assert.ok(capped.fresh.every((f) => capped.items.includes(f)), 'fresh holds only kept items');
 });
 
-test('shouldFetchList: only when the number changed or a page waits, never before retryAt', () => {
-  const base = { unread: 3, lastUnread: 3, hasMore: false, now: 100_000, retryAt: 0 };
+test('shouldFetchList: only when the number changed or a page waits', () => {
+  const base = { unread: 3, lastUnread: 3, hasMore: false };
   assert.equal(shouldFetchList(base), false);
   assert.equal(shouldFetchList({ ...base, unread: 4 }), true);
   assert.equal(shouldFetchList({ ...base, unread: 2 }), true);
   assert.equal(shouldFetchList({ ...base, lastUnread: null }), true, 'first read');
   assert.equal(shouldFetchList({ ...base, hasMore: true }), true);
-  assert.equal(shouldFetchList({ ...base, unread: 4, retryAt: 120_000 }), false, 'waits out retryAfter');
 });
 
 test('listArgs: first read is saved, then the own nextCursor — never latest, never ack', () => {
