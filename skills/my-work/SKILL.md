@@ -10,7 +10,7 @@ See everything that is waiting for the signed-in AiNecto user in one pass, then 
 ## When to use
 
 - The user asks what is new, what to do next, or whether anyone asked them something in AiNecto.
-- At the start of a work session, when the user wants a quick catch-up.
+- The user asks for a quick catch-up, for example at the start of a work session.
 
 ## Steps
 
