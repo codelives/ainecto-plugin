@@ -236,9 +236,14 @@ function fakeRoom() {
       log.peers = fn;
       return () => {};
     },
-    canSendToClaudeSession: async () => log.can ?? 'available',
+    canSendToClaudeSession: async () => {
+      if (log.can instanceof Error) throw log.can;
+      return log.can ?? 'available';
+    },
     sendToClaudeSession: (data, opts) => {
       log.sent.push([data, opts]);
+      const refusal = opts?.deliver === 'send' ? log.refuseSend : log.refuseStage;
+      if (refusal) return Promise.reject(Object.assign(new Error('refused'), { code: refusal }));
       return Promise.resolve({ to: 'pane' });
     },
   };
@@ -263,22 +268,49 @@ test('artifact host: room signals on one topic, connection state passed through,
   assert.deepEqual(await roomBridge(room, null).names(['u1']), {});
 });
 
-test('artifact host: «AI에게» goes to the viewer’s own Claude with sendToClaudeSession, delivery per availability', async () => {
+test('artifact host: «AI에게» sends first in every sendable state; claude_unavailable stages in the same press', async () => {
   const room = fakeRoom();
   const host = createArtifactHost(fakeClaude({ caps: { room } }), { projectUuid: 'p-1' });
   await host.connect();
-  assert.equal(await host.canSendToClaude(), true);
   const ctx = contextForClaude({ projectUuid: 'p-1', message: { seq: 1, uuid: 'm1', author: { displayName: 'Edwin' }, body: 'hi', at: 'x' }, conversation: { conversationUuid: 'c1', type: 'PROJECT_ROOM', name: 'AiNecto' } });
-  assert.equal(await host.sendToClaude(ctx), 'pane');
-  assert.deepEqual(room.log.sent[0], [ctx, { deliver: 'stage' }]);
-  room.log.can = 'available_if_summoned';
-  assert.equal(await host.canSendToClaude(), true);
-  await host.sendToClaude(ctx);
-  assert.deepEqual(room.log.sent[1][1], { deliver: 'send' });
-  for (const off of ['no_session', 'unsupported', 'off', 'something_new']) {
-    room.log.can = off;
-    assert.equal(await host.canSendToClaude(), false, off);
+  for (const state of ['available', 'available_if_opened', 'available_if_summoned']) {
+    room.log.can = state;
+    assert.deepEqual(await host.canSendToClaude(), { ok: true, why: null }, state);
+    room.log.sent.length = 0;
+    assert.equal(await host.sendToClaude(ctx), 'sent', state);
+    assert.deepEqual(room.log.sent, [[ctx, { deliver: 'send' }]], state);
   }
+  // A platform that cannot ask: the same call stages.
+  room.log.sent.length = 0;
+  room.log.refuseSend = 'claude_unavailable';
+  assert.equal(await host.sendToClaude(ctx), 'staged');
+  assert.deepEqual(room.log.sent.map(([, o]) => o.deliver), ['send', 'stage']);
+  // Staging refused too: the panel hears that refusal.
+  room.log.refuseStage = 'claude_unavailable';
+  await assert.rejects(host.sendToClaude(ctx), { code: 'claude_unavailable' });
+  // Any other refusal of the send is not retried as a stage.
+  room.log.sent.length = 0;
+  room.log.refuseStage = null;
+  room.log.refuseSend = 'rate_limited';
+  await assert.rejects(host.sendToClaude(ctx), { code: 'rate_limited' });
+  assert.deepEqual(room.log.sent.map(([, o]) => o.deliver), ['send']);
+});
+
+test('artifact host: a hidden «AI에게» says why', async () => {
+  const room = fakeRoom();
+  const host = createArtifactHost(fakeClaude({ caps: { room } }), { projectUuid: 'p-1' });
+  await host.connect();
+  const why = async (can) => {
+    room.log.can = can;
+    const r = await host.canSendToClaude();
+    assert.equal(r.ok, false, String(can));
+    return r.why;
+  };
+  assert.match(await why('no_session'), /Claude 대화 옆에 열었을 때/);
+  assert.match(await why('unsupported'), /브라우저/);
+  assert.match(await why('off'), /꺼져/);
+  assert.match(await why('something_new'), /\(something_new\)/);
+  assert.match(await why(Object.assign(new Error('x'), { code: 'capability_removed' })), /capability_removed/);
 });
 
 test('export: fills the one project slot with a checked uuid; capabilities name the panel tools and the signal topic', () => {

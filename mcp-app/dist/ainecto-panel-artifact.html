@@ -899,8 +899,8 @@ const __mcp_app_panel_js = (() => {
 //   watch?(name, args, onEvent) → unsubscribe     keeps a read current: onEvent({ result }) or onEvent({ error })
 //   refresh?(name, args) → Promise                 re-reads a watched call now
 //   openLink?(url)                                 without it a link is a plain <a target=_blank>
-//   canSendToClaude?() → Promise<boolean>          whether «AI에게» can go through right now
-//   sendToClaude?(ctx) → Promise<string>           hands contextForClaude(...) to the viewer's AI; called synchronously
+//   canSendToClaude?() → Promise<{ ok, why }>      whether «AI에게» can go through right now; `why` says why not
+//   sendToClaude?(ctx) → Promise<'sent'|'staged'>  hands contextForClaude(...) to the viewer's AI; called synchronously
 //                                                  from the click (the artifact runtime proves the gesture from it)
 //   room?: { emit(data), on(fn), onConnection(fn(connected)), presence(patch), onPeers(fn), names(ids) → Promise<{[id]: name}> }
 //   managePermissions?()                           opens the host's permission settings
@@ -951,6 +951,7 @@ let known = {}; // conversationUuid → highest seq this pane knows (from a read
 let marking = {}; // conversationUuid → seq a mark_read was sent for
 let typingNames = [];
 let canAsk = false;
+let askWhy = null; // why «AI에게» is hidden, shown where the card's button would be
 let banner = null; // { text, error, action?: [label, fn] }
 let syncedAt = null;
 let callSeq = 0;
@@ -1299,8 +1300,11 @@ function askAi(ctx) {
     sent = Promise.reject(err);
   }
   Promise.resolve(sent).then(
-    (where) => flash(where === 'pane' || !where ? '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요' : 'Claude 로 보냈습니다 — 대화를 확인하세요'),
-    (err) => flash(askError(err), true),
+    (how) => flash(how === 'sent' ? 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요' : '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요'),
+    (err) => {
+      console.warn(`[ainecto-panel] AI에게 failed: ${err?.code ?? ''} ${err?.message ?? err}`);
+      flash(askError(err), true);
+    },
   );
 }
 
@@ -1311,13 +1315,17 @@ function askError(err) {
 }
 
 async function updateCanAsk() {
-  const before = canAsk;
+  const before = [canAsk, askWhy];
+  let can = { ok: false, why: null };
   try {
-    canAsk = Boolean(host.sendToClaude) && (host.canSendToClaude ? await host.canSendToClaude() : true);
-  } catch {
-    canAsk = false;
+    if (host.sendToClaude) can = host.canSendToClaude ? await host.canSendToClaude() : { ok: true, why: null };
+  } catch (err) {
+    console.warn(`[ainecto-panel] canSendToClaude failed: ${err?.code ?? ''} ${err?.message ?? err}`);
   }
-  if (canAsk !== before) render();
+  canAsk = can.ok;
+  askWhy = can.ok ? null : can.why;
+  if (askWhy && askWhy !== before[1]) flash(askWhy);
+  else if (canAsk !== before[0]) render();
 }
 
 // ── Messages for the viewer ──
@@ -1574,6 +1582,8 @@ function cardView(card, now) {
   } else if (card.button && canAsk) {
     actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => askAi(contextForClaude({ projectUuid, card })) }, [el('span', { 'aria-hidden': 'true' }, '✧'), card.button, el('span', { 'aria-hidden': 'true' }, '↗')]));
     actions.push(el('div', { className: 'hint' }, '현재 AI 대화에서 이어서 검토'));
+  } else if (card.button && askWhy) {
+    actions.push(el('div', { className: 'hint' }, askWhy));
   }
   const links = [];
   if (card.url) links.push(link(card.url, '원문 열기', 'text-link'));
@@ -1795,8 +1805,17 @@ function pickConnector(servers) {
   return hit ? hit.server : null;
 }
 
-/** canSendToClaudeSession answers that let «AI에게» through, and how each one delivers. */
-const DELIVERY = { available: 'stage', available_if_opened: 'stage', available_if_summoned: 'send' };
+/** canSendToClaudeSession answers that let «AI에게» through. Each takes a {deliver: 'send'}; where one cannot ask
+ *  the viewer (a browser that cannot prove the click, or the platform has it off) it is `claude_unavailable` and the
+ *  same press stages instead (room.d.ts CanSendToClaudeSession). */
+const SENDABLE = new Set(['available', 'available_if_opened', 'available_if_summoned']);
+
+/** Why «AI에게» is hidden, for the other answers (an unknown one or a rejection: the fallback line). */
+const HIDDEN = {
+  no_session: 'AI에게 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다',
+  unsupported: '이 브라우저에서는 AI에게 보내기를 쓸 수 없습니다',
+  off: '이 화면에서는 AI에게 보내기가 꺼져 있습니다',
+};
 
 /** The panel's room calls over the runtime's `room` (and `user` for names). Never throws. */
 function roomBridge(room, user, log = () => {}) {
@@ -1824,7 +1843,6 @@ function createArtifactHost(claude, { projectUuid = null } = {}) {
   let mcp = null;
   let server = null;
   let room = null;
-  let delivery = null;
   const host = {
     async connect() {
       if (typeof claude?.use !== 'function') throw new Error('Claude 아티팩트 안에서 열어야 합니다');
@@ -1857,11 +1875,22 @@ function createArtifactHost(claude, { projectUuid = null } = {}) {
         room = r;
         host.room = roomBridge(r, u, (line) => console.warn(`[ainecto-panel] ${line}`));
         host.canSendToClaude = async () => {
-          delivery = DELIVERY[await room.canSendToClaudeSession()] ?? null;
-          return Boolean(delivery);
+          const state = await room.canSendToClaudeSession().catch((err) => `rejected ${err?.code ?? err?.message ?? err}`);
+          console.info(`[ainecto-panel] canSendToClaudeSession: ${state}`);
+          if (SENDABLE.has(state)) return { ok: true, why: null };
+          return { ok: false, why: HIDDEN[state] ?? `AI에게 보내기를 지금 쓸 수 없습니다 (${state})` };
         };
-        // Called from the click itself, nothing awaited first: the runtime proves the gesture from this call.
-        host.sendToClaude = (ctx) => room.sendToClaudeSession(ctx, { deliver: delivery ?? 'stage' }).then((sent) => sent?.to ?? 'pane');
+        // Called from the click itself, nothing awaited first: the runtime proves the gesture from this call. 'send'
+        // starts Claude's turn on the platform's «보내기»; `claude_unavailable` falls back to staging in the same press.
+        host.sendToClaude = (ctx) =>
+          room.sendToClaudeSession(ctx, { deliver: 'send' }).then(
+            () => 'sent',
+            (err) => {
+              if (err?.code !== 'claude_unavailable') throw err;
+              console.warn(`[ainecto-panel] sendToClaudeSession send: claude_unavailable ${err?.message ?? ''} — staging instead`);
+              return room.sendToClaudeSession(ctx, { deliver: 'stage' }).then(() => 'staged');
+            },
+          );
       }
       if (p) host.managePermissions = () => p.manage().catch(() => {});
       return { name: `Claude 아티팩트 · ${server}`, projectUuid };

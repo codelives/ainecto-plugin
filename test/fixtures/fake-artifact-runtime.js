@@ -43,6 +43,7 @@
   const emitted = [];
   const presence = [];
   const sentToClaude = [];
+  const refusedToClaude = []; // {deliver: 'send'} calls refused with __fake.refuseSend
   const watches = [];
   const listeners = { conv: [], peers: [], connection: [] };
 
@@ -122,7 +123,7 @@
 
   // Send controls for the test: hold the answer to conversation_send (stored at once, answered on release),
   // or fail the next sends before they are stored (server_unavailable).
-  const sendControl = { held: null, failures: 0, readFailure: null };
+  const sendControl = { held: null, failures: 0, readFailure: null, canSend: window.__FAKE_CAN_SEND__ ?? 'available', sendRefusal: null };
   async function run(tool, input) {
     await Promise.resolve();
     if (tool === 'conversation_send' && sendControl.failures > 0) {
@@ -196,9 +197,13 @@
       listeners.peers.push(fn);
       return () => {};
     },
-    canSendToClaudeSession: async () => 'available',
+    canSendToClaudeSession: async () => sendControl.canSend,
     sendToClaudeSession: (data, opts) => {
       if (!window.__inClick) return Promise.reject(Object.assign(new Error('no gesture'), { code: 'claude_unavailable' }));
+      if (opts?.deliver === 'send' && sendControl.sendRefusal) {
+        refusedToClaude.push({ data, opts });
+        return Promise.reject(Object.assign(new Error('cannot ask here'), { code: sendControl.sendRefusal }));
+      }
       sentToClaude.push({ data, opts });
       return Promise.resolve({ to: 'pane' });
     },
@@ -215,7 +220,11 @@
 
   window.claude = Object.freeze({ use: (name) => new Promise((resolve) => setTimeout(() => resolve(caps[name] ?? null), 5)) });
   window.__fake = {
-    ME, EDWIN, ROOM, store, calls, emitted, presence, sentToClaude,
+    ME, EDWIN, ROOM, store, calls, emitted, presence, sentToClaude, refusedToClaude,
+    /** What canSendToClaudeSession answers from now on (the page re-checks on a tab change). */
+    canSend: (state) => (sendControl.canSend = state),
+    /** Every {deliver: 'send'} is refused with this code from now on (null: taken again). */
+    refuseSend: (code) => (sendControl.sendRefusal = code),
     /** Someone else stored a message (on the server only — no signal). */
     serverMessage: (c, author, body) => append(c, author, body).seq,
     /** A room signal from another viewer. */

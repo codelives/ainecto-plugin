@@ -44,8 +44,17 @@ export function pickConnector(servers) {
   return hit ? hit.server : null;
 }
 
-/** canSendToClaudeSession answers that let «AI에게» through, and how each one delivers. */
-const DELIVERY = { available: 'stage', available_if_opened: 'stage', available_if_summoned: 'send' };
+/** canSendToClaudeSession answers that let «AI에게» through. Each takes a {deliver: 'send'}; where one cannot ask
+ *  the viewer (a browser that cannot prove the click, or the platform has it off) it is `claude_unavailable` and the
+ *  same press stages instead (room.d.ts CanSendToClaudeSession). */
+const SENDABLE = new Set(['available', 'available_if_opened', 'available_if_summoned']);
+
+/** Why «AI에게» is hidden, for the other answers (an unknown one or a rejection: the fallback line). */
+const HIDDEN = {
+  no_session: 'AI에게 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다',
+  unsupported: '이 브라우저에서는 AI에게 보내기를 쓸 수 없습니다',
+  off: '이 화면에서는 AI에게 보내기가 꺼져 있습니다',
+};
 
 /** The panel's room calls over the runtime's `room` (and `user` for names). Never throws. */
 export function roomBridge(room, user, log = () => {}) {
@@ -73,7 +82,6 @@ export function createArtifactHost(claude, { projectUuid = null } = {}) {
   let mcp = null;
   let server = null;
   let room = null;
-  let delivery = null;
   const host = {
     async connect() {
       if (typeof claude?.use !== 'function') throw new Error('Claude 아티팩트 안에서 열어야 합니다');
@@ -106,11 +114,22 @@ export function createArtifactHost(claude, { projectUuid = null } = {}) {
         room = r;
         host.room = roomBridge(r, u, (line) => console.warn(`[ainecto-panel] ${line}`));
         host.canSendToClaude = async () => {
-          delivery = DELIVERY[await room.canSendToClaudeSession()] ?? null;
-          return Boolean(delivery);
+          const state = await room.canSendToClaudeSession().catch((err) => `rejected ${err?.code ?? err?.message ?? err}`);
+          console.info(`[ainecto-panel] canSendToClaudeSession: ${state}`);
+          if (SENDABLE.has(state)) return { ok: true, why: null };
+          return { ok: false, why: HIDDEN[state] ?? `AI에게 보내기를 지금 쓸 수 없습니다 (${state})` };
         };
-        // Called from the click itself, nothing awaited first: the runtime proves the gesture from this call.
-        host.sendToClaude = (ctx) => room.sendToClaudeSession(ctx, { deliver: delivery ?? 'stage' }).then((sent) => sent?.to ?? 'pane');
+        // Called from the click itself, nothing awaited first: the runtime proves the gesture from this call. 'send'
+        // starts Claude's turn on the platform's «보내기»; `claude_unavailable` falls back to staging in the same press.
+        host.sendToClaude = (ctx) =>
+          room.sendToClaudeSession(ctx, { deliver: 'send' }).then(
+            () => 'sent',
+            (err) => {
+              if (err?.code !== 'claude_unavailable') throw err;
+              console.warn(`[ainecto-panel] sendToClaudeSession send: claude_unavailable ${err?.message ?? ''} — staging instead`);
+              return room.sendToClaudeSession(ctx, { deliver: 'stage' }).then(() => 'staged');
+            },
+          );
       }
       if (p) host.managePermissions = () => p.manage().catch(() => {});
       return { name: `Claude 아티팩트 · ${server}`, projectUuid };

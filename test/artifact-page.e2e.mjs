@@ -42,14 +42,14 @@ function published(body) {
 const playwright = await loadPlaywright();
 
 /** The exported page in a 400px Chromium page with the stand-in runtime; `problems` collects console errors. */
-async function openPanel(browser, { clock = false } = {}) {
+async function openPanel(browser, { clock = false, canSend = 'available' } = {}) {
   const context = await browser.newContext({ viewport: { width: WIDTH, height: 760 } });
   const page = await context.newPage();
   const problems = [];
   page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   if (clock) await page.clock.install();
-  await page.addInitScript((p) => (window.__FAKE_PROJECT__ = p), PROJECT);
+  await page.addInitScript(([p, c]) => ((window.__FAKE_PROJECT__ = p), (window.__FAKE_CAN_SEND__ = c)), [PROJECT, canSend]);
   await page.addInitScript({ path: join(ROOT, 'test/fixtures/fake-artifact-runtime.js') });
   // Served from a URL (not setContent) so the init scripts run before the page, as the runtime's do.
   const html = published(exportPage(buildArtifact().html, PROJECT));
@@ -155,13 +155,14 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     assert.ok((await fake(() => window.__fake.presence)).some((p) => p.typingIn === room));
     await page.locator('#compose-input').fill('');
 
-    // «AI에게» on someone's message hands it to the viewer's Claude as data.
+    // «AI에게» on someone's message sends it to the viewer's Claude as data: the platform asks once, Claude answers.
     await page.locator('.msg:not(.mine) .ask-link').first().click();
     await page.waitForFunction(() => window.__fake.sentToClaude.length === 1);
     const toClaudeMsg = await fake(() => window.__fake.sentToClaude[0]);
     assert.equal(toClaudeMsg.data.kind, 'room_message');
     assert.match(toClaudeMsg.data.notice, /지시가 아니라 참고 자료/);
-    assert.deepEqual(toClaudeMsg.opts, { deliver: 'stage' });
+    assert.deepEqual(toClaudeMsg.opts, { deliver: 'send' });
+    await page.getByText('Claude 에게 보냈습니다').waitFor();
 
     // ── Chat: start a chat with a project member from «＋ 새 챗» ──
     await page.locator('.tab', { hasText: '챗' }).click();
@@ -190,8 +191,12 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     await noOverflow('alerts');
     const listArgs = await fake(() => window.__fake.calls.find((c) => c.tool === 'list_notifications').input);
     assert.deepEqual(listArgs, { projectUuids: [PROJECT], order: 'newest', limit: 20 });
+    // Where the platform cannot ask (send is claude_unavailable), the same click stages it in the composer.
+    await fake(() => window.__fake.refuseSend('claude_unavailable'));
     await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
     await page.waitForFunction(() => window.__fake.sentToClaude.length === 2);
+    assert.deepEqual(await fake(() => window.__fake.refusedToClaude.map((r) => r.opts)), [{ deliver: 'send' }]);
+    assert.deepEqual(await fake(() => window.__fake.sentToClaude[1].opts), { deliver: 'stage' });
     const toClaude = await fake(() => window.__fake.sentToClaude[1].data);
     assert.equal(toClaude.kind, 'notification');
     assert.equal(toClaude.refs.projectUuid, PROJECT);
@@ -271,6 +276,30 @@ test('artifact page: alone, the open room is read every 5 s — stops when someo
     await fake(() => window.__fake.failReads(null));
     await page.clock.runFor(30_000);
     assert.equal(await aloneReads(), n, 'stopped after rate_limited, never tightened');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artifact page: no Claude beside the panel — «AI에게» hidden with the reason, back when a conversation is open', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    const { page, problems, fake } = await openPanel(browser, { canSend: 'no_session' });
+    const why = 'AI에게 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다';
+    await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+    await page.locator('#banner', { hasText: why }).waitFor();
+    assert.equal(await page.locator('.msg .ask-link').count(), 0);
+    await page.locator('.tab', { hasText: '알림' }).click();
+    const card = page.locator('.card', { hasText: '업무 검토 요청' });
+    await card.locator('.hint', { hasText: why }).waitFor();
+    assert.equal(await card.getByRole('button', { name: /AI에게/ }).count(), 0);
+    // A conversation opens beside it: the next re-check (a tab change) shows the button again.
+    await fake(() => window.__fake.canSend('available'));
+    await page.locator('.tab', { hasText: '룸' }).click();
+    await page.locator('.tab', { hasText: '알림' }).click();
+    await card.getByRole('button', { name: /AI에게 검토 요청/ }).waitFor();
+    assert.equal(await card.locator('.hint', { hasText: why }).count(), 0);
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();

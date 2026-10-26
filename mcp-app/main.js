@@ -77,5 +77,5 @@ startPanel({
       window.open(url, '_blank', 'noopener');
     }
   },
-  sendToClaude: (ctx) => bridge.request('ui/message', { role: 'user', content: { type: 'text', text: contextText(ctx) } }).then(() => 'pane'),
+  sendToClaude: (ctx) => bridge.request('ui/message', { role: 'user', content: { type: 'text', text: contextText(ctx) } }).then(() => 'staged'),
 });

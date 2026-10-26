@@ -11,8 +11,8 @@
 //   watch?(name, args, onEvent) → unsubscribe     keeps a read current: onEvent({ result }) or onEvent({ error })
 //   refresh?(name, args) → Promise                 re-reads a watched call now
 //   openLink?(url)                                 without it a link is a plain <a target=_blank>
-//   canSendToClaude?() → Promise<boolean>          whether «AI에게» can go through right now
-//   sendToClaude?(ctx) → Promise<string>           hands contextForClaude(...) to the viewer's AI; called synchronously
+//   canSendToClaude?() → Promise<{ ok, why }>      whether «AI에게» can go through right now; `why` says why not
+//   sendToClaude?(ctx) → Promise<'sent'|'staged'>  hands contextForClaude(...) to the viewer's AI; called synchronously
 //                                                  from the click (the artifact runtime proves the gesture from it)
 //   room?: { emit(data), on(fn), onConnection(fn(connected)), presence(patch), onPeers(fn), names(ids) → Promise<{[id]: name}> }
 //   managePermissions?()                           opens the host's permission settings
@@ -90,6 +90,7 @@ let known = {}; // conversationUuid → highest seq this pane knows (from a read
 let marking = {}; // conversationUuid → seq a mark_read was sent for
 let typingNames = [];
 let canAsk = false;
+let askWhy = null; // why «AI에게» is hidden, shown where the card's button would be
 let banner = null; // { text, error, action?: [label, fn] }
 let syncedAt = null;
 let callSeq = 0;
@@ -438,8 +439,11 @@ function askAi(ctx) {
     sent = Promise.reject(err);
   }
   Promise.resolve(sent).then(
-    (where) => flash(where === 'pane' || !where ? '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요' : 'Claude 로 보냈습니다 — 대화를 확인하세요'),
-    (err) => flash(askError(err), true),
+    (how) => flash(how === 'sent' ? 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요' : '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요'),
+    (err) => {
+      console.warn(`[ainecto-panel] AI에게 failed: ${err?.code ?? ''} ${err?.message ?? err}`);
+      flash(askError(err), true);
+    },
   );
 }
 
@@ -450,13 +454,17 @@ function askError(err) {
 }
 
 async function updateCanAsk() {
-  const before = canAsk;
+  const before = [canAsk, askWhy];
+  let can = { ok: false, why: null };
   try {
-    canAsk = Boolean(host.sendToClaude) && (host.canSendToClaude ? await host.canSendToClaude() : true);
-  } catch {
-    canAsk = false;
+    if (host.sendToClaude) can = host.canSendToClaude ? await host.canSendToClaude() : { ok: true, why: null };
+  } catch (err) {
+    console.warn(`[ainecto-panel] canSendToClaude failed: ${err?.code ?? ''} ${err?.message ?? err}`);
   }
-  if (canAsk !== before) render();
+  canAsk = can.ok;
+  askWhy = can.ok ? null : can.why;
+  if (askWhy && askWhy !== before[1]) flash(askWhy);
+  else if (canAsk !== before[0]) render();
 }
 
 // ── Messages for the viewer ──
@@ -713,6 +721,8 @@ function cardView(card, now) {
   } else if (card.button && canAsk) {
     actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => askAi(contextForClaude({ projectUuid, card })) }, [el('span', { 'aria-hidden': 'true' }, '✧'), card.button, el('span', { 'aria-hidden': 'true' }, '↗')]));
     actions.push(el('div', { className: 'hint' }, '현재 AI 대화에서 이어서 검토'));
+  } else if (card.button && askWhy) {
+    actions.push(el('div', { className: 'hint' }, askWhy));
   }
   const links = [];
   if (card.url) links.push(link(card.url, '원문 열기', 'text-link'));
