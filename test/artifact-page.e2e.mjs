@@ -42,14 +42,14 @@ function published(body) {
 const playwright = await loadPlaywright();
 
 /** The exported page in a 400px Chromium page with the stand-in runtime; `problems` collects console errors. */
-async function openPanel(browser, { clock = false, canSend = 'available' } = {}) {
+async function openPanel(browser, { clock = false, canSend = 'available', comments = null } = {}) {
   const context = await browser.newContext({ viewport: { width: WIDTH, height: 760 } });
   const page = await context.newPage();
   const problems = [];
   page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   if (clock) await page.clock.install();
-  await page.addInitScript(([p, c]) => ((window.__FAKE_PROJECT__ = p), (window.__FAKE_CAN_SEND__ = c)), [PROJECT, canSend]);
+  await page.addInitScript(([p, c, m]) => ((window.__FAKE_PROJECT__ = p), (window.__FAKE_CAN_SEND__ = c), (window.__FAKE_COMMENTS__ = m)), [PROJECT, canSend, comments]);
   await page.addInitScript({ path: join(ROOT, 'test/fixtures/fake-artifact-runtime.js') });
   // Served from a URL (not setContent) so the init scripts run before the page, as the runtime's do.
   const html = published(exportPage(buildArtifact().html, PROJECT));
@@ -201,7 +201,7 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     assert.equal(toClaude.kind, 'notification');
     assert.equal(toClaude.refs.projectUuid, PROJECT);
     assert.equal(toClaude.refs.notificationId, 'n-1');
-    assert.match(toClaude.ask, /refs\.url/);
+    assert.match(toClaude.ask, /원문/);
     assert.ok(new TextEncoder().encode(JSON.stringify(toClaude)).length <= 4096);
     await page.getByText('대화 입력창에 넣었습니다').waitFor();
 
@@ -300,6 +300,74 @@ test('artifact page: no Claude beside the panel — «AI에게» hidden with the
     await page.locator('.tab', { hasText: '알림' }).click();
     await card.getByRole('button', { name: /AI에게 검토 요청/ }).waitFor();
     assert.equal(await card.locator('.hint', { hasText: why }).count(), 0);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artifact page: comments can send — «AI에게» is one sendToClaude, works in comment mode, consent_required says so (KAN-392)', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    const { page, problems, fake } = await openPanel(browser, { comments: 'available' });
+    await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+    // customAnchors registered at load and reported an empty placement (pins stay in the shell's list).
+    await page.waitForFunction(() => window.__fake.comments.anchors && window.__fake.comments.placed.length > 0);
+    assert.deepEqual(await fake(() => window.__fake.comments.placed.at(-1)), {});
+
+    // Room message: one click → one comments.sendToClaude with the short text; no dialog, room not used.
+    await page.locator('.msg:not(.mine) .ask-link').first().click();
+    await page.waitForFunction(() => window.__fake.comments.sent.length === 1);
+    const first = await fake(() => window.__fake.comments.sent[0]);
+    assert.equal(first.anchor.path, 'article', 'anchored at the pressed message');
+    assert.match(first.text, /^\[AiNecto 패널\] 프로젝트 룸 — 테스트 프로젝트\n보낸 사람: /);
+    assert.match(first.text, /^요청: /m);
+    assert.deepEqual(await fake(() => window.__fake.sentToClaude), []);
+    await page.getByText('답은 옆 대화창에 옵니다').waitFor();
+
+    // Comment mode on: «댓글 모드가 켜져 있습니다 · 끄기», and the card button still works (the shell does not take the click).
+    await fake(() => window.__fake.commentMode(true));
+    await page.locator('#comment-mode', { hasText: '댓글 모드가 켜져 있습니다' }).waitFor();
+    await page.locator('.tab', { hasText: '알림' }).click();
+    const card = page.locator('.card', { hasText: '업무 검토 요청' });
+    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await page.waitForFunction(() => window.__fake.comments.sent.length === 2);
+    const second = await fake(() => window.__fake.comments.sent[1]);
+    assert.match(second.text, /^\[AiNecto 패널\] 업무 검토 요청 — Claude·Claude Code 협업 연동\n/);
+    assert.match(second.text, /^원문: https?:\/\//m);
+    assert.ok(new TextEncoder().encode(second.text).length <= 4096);
+    // «끄기» asks the shell to leave comment mode; the strip goes away on mode(false).
+    await page.locator('#comment-mode').getByRole('button', { name: '끄기' }).click();
+    await page.locator('#comment-mode').waitFor({ state: 'hidden' });
+    assert.equal(await fake(() => window.__fake.comments.exits), 1);
+
+    // consent_required: nothing sent through room, the viewer is told what to do.
+    await fake(() => window.__fake.refuseComment('consent_required'));
+    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await page.getByText('처음 한 번 댓글 허용이 필요합니다').waitFor();
+    assert.deepEqual(await fake(() => window.__fake.sentToClaude), []);
+
+    // claude_unavailable (nothing posted): the same click falls back to room's send (KAN-388).
+    await fake(() => window.__fake.refuseComment('claude_unavailable'));
+    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await page.waitForFunction(() => window.__fake.sentToClaude.length === 1);
+    assert.deepEqual(await fake(() => window.__fake.sentToClaude[0].opts), { deliver: 'send' });
+    await page.getByText('확인 창이 뜨면').waitFor();
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artifact page: comments only for editors — writers_only falls back to room in the same button', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    const { page, problems, fake } = await openPanel(browser, { comments: 'writers_only' });
+    await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+    await page.locator('.msg:not(.mine) .ask-link').first().click();
+    await page.waitForFunction(() => window.__fake.sentToClaude.length === 1);
+    assert.deepEqual(await fake(() => window.__fake.comments.sent), []);
+    assert.deepEqual(await fake(() => window.__fake.sentToClaude[0].opts), { deliver: 'send' });
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();

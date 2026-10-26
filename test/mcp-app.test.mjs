@@ -313,6 +313,114 @@ test('artifact host: a hidden «AI에게» says why', async () => {
   assert.match(await why(Object.assign(new Error('x'), { code: 'capability_removed' })), /capability_removed/);
 });
 
+function fakeComments() {
+  const log = { can: 'available', sent: [], anchored: [], refuse: null, registered: null, placed: [], exits: 0 };
+  return {
+    log,
+    canSendToClaude: async () => {
+      if (log.can instanceof Error) throw log.can;
+      return log.can;
+    },
+    anchorFor: async (el) => {
+      log.anchored.push(el);
+      return { path: 'article:nth-of-type(1)', x: 0.5, y: 0.5 };
+    },
+    sendToClaude: (target) => {
+      log.sent.push(target);
+      if (log.refuse) return Promise.reject(Object.assign(new Error('refused'), { code: log.refuse }));
+      return Promise.resolve({ threadId: 't-1', commentId: 'c-1' });
+    },
+    customAnchors: async (callbacks) => {
+      log.registered = callbacks;
+      callbacks.threads([{ id: 'h1', anchor: 'x', resolved: false, active: false }]); // before the promise settles
+      return { placed: (map) => log.placed.push(map), exitMode: () => (log.exits += 1), release: () => {} };
+    },
+  };
+}
+
+test('artifact host: «AI에게» is one comments.sendToClaude with the short text when comments can send (KAN-392)', async () => {
+  const comments = fakeComments();
+  const room = fakeRoom();
+  const host = createArtifactHost(fakeClaude({ caps: { comments, room } }), { projectUuid: 'p-1' });
+  await host.connect();
+  const ctx = contextForClaude({ projectUuid: 'p-1', message: { seq: 3, uuid: 'm3', author: { displayName: 'Edwin' }, body: '이거 봐 주세요', at: '2026-10-26T01:00:00Z' }, conversation: { conversationUuid: 'c1', type: 'PROJECT_ROOM', name: 'AiNecto' } });
+  assert.deepEqual(await host.canSendToClaude(), { ok: true, why: null });
+  const pressed = { tag: 'article' };
+  assert.equal(await host.sendToClaude(ctx, pressed), 'commented');
+  assert.equal(comments.log.sent.length, 1, 'one call, no dialog');
+  assert.deepEqual(comments.log.anchored, [pressed], 'anchored at the pressed item');
+  assert.deepEqual(comments.log.sent[0].anchor, { path: 'article:nth-of-type(1)', x: 0.5, y: 0.5 });
+  assert.match(comments.log.sent[0].text, /^\[AiNecto 패널\] 프로젝트 룸 — AiNecto\n/);
+  assert.match(comments.log.sent[0].text, /^> 이거 봐 주세요$/m);
+  assert.deepEqual(room.log.sent, [], 'room is not used');
+
+  // Comment mode: customAnchors registered at connect; every thread list (and the registration) reports placed({}).
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(comments.log.registered);
+  assert.deepEqual(comments.log.placed, [{}], 'reported once the controller exists (the early list had none)');
+  comments.log.registered.threads([]);
+  assert.deepEqual(comments.log.placed, [{}, {}]);
+  const modes = [];
+  host.onCommentMode((on) => modes.push(on));
+  comments.log.registered.mode(true);
+  host.exitCommentMode();
+  comments.log.registered.mode(false);
+  assert.deepEqual(modes, [false, true, false]);
+  assert.equal(comments.log.exits, 1);
+
+  // consent_required / rate_limited reach the panel as they are and are not re-sent through room.
+  for (const code of ['consent_required', 'rate_limited', 'upstream_error']) {
+    comments.log.refuse = code;
+    await assert.rejects(host.sendToClaude(ctx, pressed), { code });
+  }
+  assert.deepEqual(room.log.sent, []);
+  // claude_unavailable (nothing was posted): the same press goes through room; comments stays for the next press.
+  comments.log.refuse = 'claude_unavailable';
+  assert.equal(await host.sendToClaude(ctx, pressed), 'sent');
+  assert.deepEqual(room.log.sent, [[ctx, { deliver: 'send' }]]);
+  assert.deepEqual(await host.canSendToClaude(), { ok: true, why: null });
+  // forbidden is permanent for the view: through room from now on, comments is not asked again.
+  comments.log.refuse = 'forbidden';
+  room.log.sent.length = 0;
+  assert.equal(await host.sendToClaude(ctx, pressed), 'sent');
+  const asked = comments.log.sent.length;
+  await host.canSendToClaude();
+  assert.equal(await host.sendToClaude(ctx, pressed), 'sent');
+  assert.equal(comments.log.sent.length, asked, 'comments not asked after forbidden');
+});
+
+test('artifact host: comments cannot send here → the same button uses room (KAN-388); without room it says why', async () => {
+  const room = fakeRoom();
+  for (const can of ['writers_only', 'no_session', 'off', Object.assign(new Error('x'), { code: 'capability_removed' })]) {
+    const comments = fakeComments();
+    comments.log.can = can;
+    const host = createArtifactHost(fakeClaude({ caps: { comments, room } }));
+    await host.connect();
+    assert.deepEqual(await host.canSendToClaude(), { ok: true, why: null }, String(can));
+    room.log.sent.length = 0;
+    assert.equal(await host.sendToClaude({ label: 'x' }, {}), 'sent', String(can));
+    assert.equal(comments.log.sent.length, 0, String(can));
+  }
+  const why = async (can) => {
+    const comments = fakeComments();
+    comments.log.can = can;
+    const host = createArtifactHost(fakeClaude({ caps: { comments } }));
+    await host.connect();
+    const r = await host.canSendToClaude();
+    assert.equal(r.ok, false);
+    return r.why;
+  };
+  assert.match(await why('writers_only'), /게시한 사람\(편집자\)만/);
+  assert.match(await why('no_session'), /Claude 대화 옆에 열었을 때/);
+  assert.match(await why('off'), /꺼져/);
+  // customAnchors not declared: registration refused, the panel still runs.
+  const comments = fakeComments();
+  comments.customAnchors = async () => Promise.reject(Object.assign(new Error('no'), { code: 'not_granted' }));
+  const host = createArtifactHost(fakeClaude({ caps: { comments } }));
+  await host.connect();
+  assert.deepEqual(await host.canSendToClaude(), { ok: true, why: null });
+});
+
 test('export: fills the one project slot with a checked uuid; capabilities name the panel tools and the signal topic', () => {
   const html = buildArtifact().html;
   assert.equal(html.split('<script type="application/json" id="ainecto-project">{"projectUuid":null}</script>').length, 2);
@@ -325,5 +433,6 @@ test('export: fills the one project slot with a checked uuid; capabilities name 
     mcp: { servers: [{ server: 'claude_ai_Ainecto_dev', tools: PANEL_TOOLS }] },
     room: { topics: { conv: 'interact' } },
     user: { scopes: ['profile'] },
+    comments: { customAnchors: true },
   });
 });

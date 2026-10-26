@@ -12,8 +12,11 @@
 //   refresh?(name, args) → Promise                 re-reads a watched call now
 //   openLink?(url)                                 without it a link is a plain <a target=_blank>
 //   canSendToClaude?() → Promise<{ ok, why }>      whether «AI에게» can go through right now; `why` says why not
-//   sendToClaude?(ctx) → Promise<'sent'|'staged'>  hands contextForClaude(...) to the viewer's AI; called synchronously
-//                                                  from the click (the artifact runtime proves the gesture from it)
+//   sendToClaude?(ctx, target) → Promise<'commented'|'sent'|'staged'>  hands contextForClaude(...) to the viewer's AI;
+//                                                  called synchronously from the click (the artifact runtime proves the
+//                                                  gesture from it); `target` = the pressed item's element
+//   onCommentMode?(fn(on)) → unsubscribe           the artifact's comment mode turned on/off (the panel shows «끄기»)
+//   exitCommentMode?()                             asks the host to leave comment mode
 //   room?: { emit(data), on(fn), onConnection(fn(connected)), presence(patch), onPeers(fn), names(ids) → Promise<{[id]: name}> }
 //   managePermissions?()                           opens the host's permission settings
 // }
@@ -92,6 +95,7 @@ let typingNames = [];
 let canAsk = false;
 let askWhy = null; // why «AI에게» is hidden, shown where the card's button would be
 let banner = null; // { text, error, action?: [label, fn] }
+let commentMode = false; // the artifact's comment mode is on (host.onCommentMode)
 let syncedAt = null;
 let callSeq = 0;
 let roomConnected = false;
@@ -430,27 +434,42 @@ async function markAlertRead(card) {
   refresh('get_my_work_summary', summaryArgs());
 }
 
+/** What the viewer reads after «AI에게», by how the host delivered it. */
+const ASKED = {
+  commented: 'Claude 에게 보냈습니다 — 답은 옆 대화창에 옵니다',
+  sent: 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요',
+  staged: '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요',
+};
+
+/** Why «AI에게» did not go through, by rejection code (artifact comments.d.ts / room.d.ts). */
+const ASK_FAILED = {
+  consent_required: '처음 한 번 댓글 허용이 필요합니다 — 허용 창에서 허용한 뒤 다시 누르세요 (창을 닫았다면 패널을 새로 열고 누르세요)',
+  claude_unavailable: '지금 받을 Claude 대화가 없습니다. 이 패널을 Claude 대화 옆에 열고 다시 누르세요',
+  rate_limited: '너무 자주 보냈습니다. 잠시 뒤 다시 누르세요',
+  forbidden: '이 화면에서는 패널에서 AI에게 보내기(댓글)가 꺼져 있습니다',
+};
+
 /** «AI에게»: hands the item to the viewer's own AI. Runs inside the click, before anything is awaited. */
-function askAi(ctx) {
+function askAi(ctx, event) {
+  const target = event?.currentTarget?.closest?.('article, .card') ?? event?.currentTarget ?? null;
   let sent;
   try {
-    sent = host.sendToClaude(ctx);
+    sent = host.sendToClaude(ctx, target);
   } catch (err) {
     sent = Promise.reject(err);
   }
   Promise.resolve(sent).then(
-    (how) => flash(how === 'sent' ? 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요' : '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요'),
+    (how) => flash(ASKED[how] ?? ASKED.staged),
     (err) => {
       console.warn(`[ainecto-panel] AI에게 failed: ${err?.code ?? ''} ${err?.message ?? err}`);
       flash(askError(err), true);
+      updateCanAsk(); // a permanent refusal (forbidden …) changes what the button does or hides it
     },
   );
 }
 
 function askError(err) {
-  if (err?.code === 'claude_unavailable') return '지금 받을 Claude 대화가 없습니다. 이 패널을 대화 옆에 열고 다시 누르세요';
-  if (err?.code === 'rate_limited') return '너무 자주 보냈습니다. 잠시 뒤 다시 누르세요';
-  return 'AI에게 보내지 못했습니다: ' + (err?.message ?? err);
+  return ASK_FAILED[err?.code] ?? 'AI에게 보내지 못했습니다: ' + (err?.message ?? err);
 }
 
 async function updateCanAsk() {
@@ -565,6 +584,16 @@ function renderBanner() {
   b.replaceChildren(...[el('span', {}, banner.text), banner.action ? el('button', { type: 'button', onClick: banner.action[1] }, banner.action[0]) : null].filter(Boolean));
 }
 
+function renderCommentMode() {
+  const b = $('comment-mode');
+  b.hidden = !commentMode;
+  if (!commentMode) return;
+  b.replaceChildren(
+    el('span', {}, '댓글 모드가 켜져 있습니다'),
+    host.exitCommentMode ? el('button', { type: 'button', onClick: () => host.exitCommentMode() }, '끄기') : null,
+  );
+}
+
 function renderConversation() {
   const view = $('view-conversation');
   const c = shownConversation();
@@ -636,7 +665,7 @@ function messageView(m, c, direct) {
   const mine = me && m.author?.userId === me.userId;
   const author = m.author?.displayName || '탈퇴한 사용자';
   const ask = canAsk && !mine
-    ? el('button', { type: 'button', className: 'ask-link', onClick: () => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } })) }, 'AI에게')
+    ? el('button', { type: 'button', className: 'ask-link', onClick: (event) => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } }), event) }, 'AI에게')
     : null;
   if (mine) {
     const read = readLabel(m, page?.type, me.userId);
@@ -719,7 +748,7 @@ function cardView(card, now) {
   if (card.openChat) {
     actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => { tab = 'chat'; openChat = card.openChat; onConversationChange(); } }, '챗 열기'));
   } else if (card.button && canAsk) {
-    actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => askAi(contextForClaude({ projectUuid, card })) }, [el('span', { 'aria-hidden': 'true' }, '✧'), card.button, el('span', { 'aria-hidden': 'true' }, '↗')]));
+    actions.push(el('button', { type: 'button', className: 'ai-button', onClick: (event) => askAi(contextForClaude({ projectUuid, card }), event) }, [el('span', { 'aria-hidden': 'true' }, '✧'), card.button, el('span', { 'aria-hidden': 'true' }, '↗')]));
     actions.push(el('div', { className: 'hint' }, '현재 AI 대화에서 이어서 검토'));
   } else if (card.button && askWhy) {
     actions.push(el('div', { className: 'hint' }, askWhy));
@@ -756,6 +785,7 @@ function renderFoot() {
 
 function render() {
   renderTabs();
+  renderCommentMode();
   renderBanner();
   renderConversation();
   renderChats();
@@ -865,6 +895,10 @@ export async function startPanel(theHost) {
   const self = await callTool('identity_get_self', {});
   if (self.ok) me = { userId: self.data?.userId, displayName: self.data?.displayName };
   else showError(self, '내 정보를 읽지 못했습니다');
+  host.onCommentMode?.((on) => {
+    commentMode = on;
+    render();
+  });
   host.room?.on(onSignal);
   host.room?.onConnection((connected) => {
     const reconnected = connected && roomConnected === false && projectUuid;

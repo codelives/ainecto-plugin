@@ -216,7 +216,45 @@
 
   const user = Object.freeze({ profiles: async (ids) => Object.fromEntries(ids.map((id) => [id, { id, name: id === 'claude-edwin' ? 'Edwin' : '', avatarUrl: '', color: '#888', email: null, isMe: false, guest: false }])) });
   const permissions = Object.freeze({ state: async () => 'granted', request: async () => ({}), manage: async () => {} });
-  const caps = { mcp, room, user, permissions };
+  // comments (KAN-392), only when the test asks for it (window.__FAKE_COMMENTS__): canSendToClaude, anchorFor,
+  // sendToClaude (gesture-checked like room), customAnchors. While comment mode is on and no page registered
+  // customAnchors, the shell takes every click inside the artifact (as claude.ai's click-to-comment does).
+  const commentsControl = { can: window.__FAKE_COMMENTS__ ?? null, refusal: null, sent: [], anchors: null, mode: false, placed: [], exits: 0 };
+  const comments = Object.freeze({
+    canSendToClaude: async () => commentsControl.can,
+    anchorFor: async (el) => {
+      if (!(el instanceof Element) || !el.isConnected) throw Object.assign(new Error('not attached'), { code: 'invalid' });
+      return { path: el.tagName.toLowerCase(), x: 0.5, y: 0.5 };
+    },
+    sendToClaude: async (target) => {
+      if (!window.__inClick) throw Object.assign(new Error('no gesture'), { code: 'claude_unavailable' });
+      if (commentsControl.refusal) throw Object.assign(new Error('refused'), { code: commentsControl.refusal });
+      if (new TextEncoder().encode(target.text).length > 4096) throw Object.assign(new Error('too long'), { code: 'invalid' });
+      commentsControl.sent.push(target);
+      return { threadId: `t-${commentsControl.sent.length}`, commentId: 'c' };
+    },
+    customAnchors: async (callbacks) => {
+      commentsControl.anchors = callbacks;
+      callbacks.mode(commentsControl.mode);
+      callbacks.threads([]);
+      return Object.freeze({
+        placed: (map) => commentsControl.placed.push(map),
+        exitMode: () => {
+          commentsControl.exits += 1;
+          commentsControl.mode = false;
+          callbacks.mode(false);
+        },
+        release: () => (commentsControl.anchors = null),
+      });
+    },
+  });
+  document.addEventListener('click', (event) => {
+    if (commentsControl.mode && !commentsControl.anchors) {
+      event.stopPropagation();
+      event.preventDefault();
+    }
+  }, true);
+  const caps = { mcp, room, user, permissions, ...(commentsControl.can ? { comments } : {}) };
 
   window.claude = Object.freeze({ use: (name) => new Promise((resolve) => setTimeout(() => resolve(caps[name] ?? null), 5)) });
   window.__fake = {
@@ -243,6 +281,14 @@
     failNext: (n = 1) => (sendControl.failures = n),
     /** Every conversation_get_messages callTool fails with this code from now on (null: answer again). */
     failReads: (code) => (sendControl.readFailure = code),
+    comments: commentsControl,
+    /** The viewer turns comment mode on from the shell. */
+    commentMode: (on) => {
+      commentsControl.mode = on;
+      commentsControl.anchors?.mode(on);
+    },
+    /** comments.sendToClaude rejects with this code from now on (null: taken again). */
+    refuseComment: (code) => (commentsControl.refusal = code),
     peers: (list) => listeners.peers.forEach((fn) => fn({ peers: list, joined: [], left: [], updated: list })),
   };
 })();

@@ -21,13 +21,15 @@ export function exportPage(html, projectUuid) {
   return html.replace(empty, projectSlot(uuid));
 }
 
-/** The capabilities the page needs: the connector's panel tools, the signal topic for Contributors, viewers' names. */
+/** The capabilities the page needs: the connector's panel tools, the signal topic for Contributors, viewers' names,
+ *  and comments with customAnchors — «AI에게» as comments.sendToClaude, buttons usable in comment mode (KAN-392). */
 export function capabilitiesFor(server) {
   if (!server) throw new Error('--server is required for the capabilities');
   return {
     mcp: { servers: [{ server, tools: [...PANEL_TOOLS] }] },
     room: { topics: { [SIGNAL_TOPIC]: 'interact' } },
     user: { scopes: ['profile'] },
+    comments: { customAnchors: true },
   };
 }
 

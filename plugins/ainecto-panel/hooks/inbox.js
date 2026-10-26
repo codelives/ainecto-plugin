@@ -506,10 +506,10 @@ export function typingIn(peers, conversationUuid) {
 
 /** What to ask the AI about a kind of notification: the button and the sentence for Claude. */
 const ASKS = {
-  review: { button: 'AI에게 검토 요청', label: '검토 요청', ask: '업무 검토 요청입니다. refs.url 의 원문(카드·문서)과 댓글을 읽고 검토 의견을 정리해 주세요.' },
-  change: { button: 'AI에게 변경 확인 요청', label: '변경 확인 요청', ask: '구독한 문서가 바뀌었습니다. refs.url 의 원문을 읽고 무엇이 바뀌었는지 정리해 주세요.' },
-  comment: { button: 'AI에게 댓글 확인 요청', label: '댓글 확인 요청', ask: '댓글 확인 요청입니다. refs.url 의 원문과 댓글을 읽고 어떻게 답할지 제안해 주세요.' },
-  work: { button: 'AI에게 확인 요청', label: '확인 요청', ask: '이 알림의 원문을 refs.url 에서 읽고 무엇을 하면 되는지 정리해 주세요.' },
+  review: { button: 'AI에게 검토 요청', label: '검토 요청', ask: '원문(카드·문서)과 댓글을 읽고 검토 의견을 정리해 주세요.' },
+  change: { button: 'AI에게 변경 확인 요청', label: '변경 확인 요청', ask: '구독한 문서의 원문을 읽고 무엇이 바뀌었는지 정리해 주세요.' },
+  comment: { button: 'AI에게 댓글 확인 요청', label: '댓글 확인 요청', ask: '원문과 댓글을 읽고 어떻게 답할지 제안해 주세요.' },
+  work: { button: 'AI에게 확인 요청', label: '확인 요청', ask: '이 알림의 원문을 읽고 무엇을 하면 되는지 정리해 주세요.' },
   message: { button: 'AI에게 보내기', label: '메시지', ask: '이 메시지를 살펴보고, 필요하면 원문 대화를 읽은 뒤 어떻게 답할지 제안해 주세요.' },
 };
 
@@ -598,8 +598,8 @@ function compact(obj) {
 }
 
 /**
- * What the panel hands to the viewer's own AI about one item — the one shape every host sends
- * (the artifact as data with room.sendToClaudeSession, the MCP App as text with ui/message via contextText).
+ * What the panel hands to the viewer's own AI about one item — the one shape every host sends: as data
+ * (room.sendToClaudeSession) or as the short text of contextText (comments.sendToClaude, MCP Apps ui/message).
  * Only what the server returned goes in, cleaned and cut to CONTEXT_MAX_BYTES.
  * @param {{ projectUuid: string, card?: ReturnType<typeof alertCard>,
  *   message?: any, conversation?: { conversationUuid: string, type: string, name: string } }} input
@@ -649,18 +649,45 @@ export function contextForClaude({ projectUuid, card, message, conversation }) {
   return out;
 }
 
-/** contextForClaude as the text a host without data hand-off puts in the conversation (MCP Apps ui/message). */
+/** First line of every text hand-off: Claude knows a panel comment by it (the AiNecto connector's instructions). */
+export const PANEL_MARK = '[AiNecto 패널]';
+
+/**
+ * contextForClaude as the short text a host without data hand-off sends (KAN-392): a comment sent to Claude from the
+ * artifact (comments.sendToClaude), the MCP App's ui/message. Someone else's words stay quoted line by line («> »);
+ * the whole text stays within CONTEXT_MAX_BYTES as UTF-8 (the comments bound is 4 KiB).
+ *   [AiNecto 패널] 댓글 멘션 — <제목>
+ *   보낸 사람: <이름> · <시각> · <프로젝트>
+ *   > <원문>
+ *   원문: <url>
+ *   요청: <ask>
+ */
 export function contextText(ctx) {
   const q = ctx?.quoted ?? {};
-  const quote = (s) => String(s).split('\n').map((line) => `> ${line}`);
-  const lines = [`${ctx?.label ?? 'AiNecto'} — ${ctx?.notice ?? NOT_AN_INSTRUCTION}`, ''];
-  if (q.title) lines.push(...quote(q.title));
-  if (q.author || q.at) lines.push(`> ${[q.author, q.at].filter(Boolean).join(' · ')}`);
-  if (q.path) lines.push(`> ${q.path}`);
-  if (q.text) lines.push(...quote(q.text));
-  if (ctx?.refs?.url) lines.push(`> ${ctx.refs.url}`);
-  lines.push('', String(ctx?.ask ?? ''));
-  return lines.join('\n');
+  const refs = ctx?.refs ?? {};
+  const head = String(ctx?.label ?? 'AiNecto').replace(/^AiNecto · /, '').replace(' · ', ' — ');
+  const from = [q.author, stampKo(q.at), q.path].filter(Boolean).join(' · ');
+  const where = refs.url
+    ? refs.url
+    : refs.conversationUuid
+      ? `conversationUuid ${refs.conversationUuid}${refs.seq ? ` · seq ${refs.seq}` : ''}`
+      : '';
+  const build = (text) => {
+    const lines = [`${PANEL_MARK} ${head}`];
+    if (from) lines.push(`보낸 사람: ${from}`);
+    if (text) lines.push(...String(text).split('\n').map((line) => `> ${line}`));
+    if (where) lines.push(`원문: ${where}`);
+    lines.push(`요청: ${ctx?.ask ?? ''}`);
+    return lines.join('\n');
+  };
+  let text = q.text ?? '';
+  let out = build(text);
+  while (new TextEncoder().encode(out).length > CONTEXT_MAX_BYTES && text) {
+    const chars = [...text];
+    text = chars.length < 8 ? '' : chars.slice(0, Math.floor(chars.length * 0.8) - 1).join('') + '…';
+    out = build(text);
+  }
+  return out;
 }
 
 // ── Time as the panel shows it ──
@@ -671,6 +698,14 @@ export function clockKo(iso) {
   if (typeof iso !== 'string' || Number.isNaN(d.getTime())) return '';
   const h = d.getHours();
   return `${h < 12 ? '오전' : '오후'} ${h % 12 === 0 ? 12 : h % 12}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+/** `10월 26일 오후 2:29` in the viewer's time zone (a hand-off's time), or '' when it does not parse. */
+export function stampKo(iso) {
+  const clock = clockKo(iso);
+  if (!clock) return '';
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일 ${clock}`;
 }
 
 /** The day a message belongs to, for the date line: 오늘 · 어제 · 10월 24일 · 2025년 10월 24일. */

@@ -122,7 +122,13 @@ In Claude web and desktop an artifact opens beside the conversation and stays th
 (design `claude-artifact-chat-design` §4), everything through the artifact runtime: `mcp` with the viewer's own
 connector (`watchTool` keeps reads current, `invalidate` re-reads now), `room` (after a message is stored the sender
 puts `{c, s, k}` — conversation, seq, kind, no body — on topic `conv`, and everyone with the panel open reads again;
-«입력 중» is presence; «AI에게» is `sendToClaudeSession` to the viewer's own Claude) and `user` (names of people typing).
+«입력 중» is presence) and `user` (names of people typing). «AI에게» is one click (KAN-392): `comments.sendToClaude`
+posts the item as a short text starting with `[AiNecto 패널]` on the artifact and sends it to Claude, which answers in
+the conversation and leaves «대화창에 답했습니다» + resolved in the thread (the AiNecto connector's instructions say
+so). Only editors of the artifact can send that way — publish your own panel; the first send asks once to allow
+comments. `comments.customAnchors` keeps the buttons working while comment mode is on («댓글 모드가 켜져 있습니다 ·
+끄기»). Where comments cannot send (not an editor, no comments here, `claude_unavailable`) the same button falls back
+to `room.sendToClaudeSession` (a dialog, KAN-388).
 
 Export it for one project, then publish the file with the capabilities the export writes:
 
@@ -130,7 +136,7 @@ Export it for one project, then publish the file with the capabilities the expor
 npm run export:artifact -- --project <project uuid> --out /tmp/panel.html --server <connector>
 # → /tmp/panel.html (the project uuid in its one slot) and /tmp/panel.capabilities.json:
 #   { mcp: { servers: [{ server: <connector>, tools: PANEL_TOOLS }] }, room: { topics: { conv: "interact" } },
-#     user: { scopes: ["profile"] } }
+#     user: { scopes: ["profile"] }, comments: { customAnchors: true } }
 ```
 
 `--server` is the connector as the publishing session names it (the Artifact tool resolves it to the display name);
