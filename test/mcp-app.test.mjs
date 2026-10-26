@@ -8,18 +8,21 @@ import {
   ROOT,
   OUT_HTML,
   OUT_SHA,
+  OUT_ARTIFACT_VERSION,
+  artifactVersion,
   build,
   buildArtifact,
   bundle,
   diffAgainstDisk,
   sha256Line,
   toArtifactPage,
+  versionSlot,
 } from '../scripts/build-mcp-app.mjs';
 import { APP_PROTOCOL_VERSION, createBridge, initializeParams } from '../mcp-app/bridge.js';
 import { PANEL_TOOLS } from '../mcp-app/panel.js';
 import { createArtifactHost, mcpError, pickConnector, roomBridge } from '../mcp-app/artifact-host.js';
 import { capabilitiesFor, exportPage } from '../scripts/export-artifact.mjs';
-import { contextForClaude, POLL_MS } from '../plugins/ainecto-panel/hooks/inbox.js';
+import { contextForClaude, contextText, panelUpdate, POLL_MS, updateRequestForClaude } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 test('the committed panel HTML is a fresh build of its sources (npm run build:app)', () => {
   assert.deepEqual(diffAgainstDisk(), []);
@@ -149,7 +152,7 @@ test('artifact host: finds the AiNecto connector from the manifest and calls it 
   assert.equal(pickConnector([]), null);
   const calls = [];
   const host = createArtifactHost(fakeClaude({ calls }));
-  assert.deepEqual(await host.connect(), { name: 'Claude 아티팩트 · AiNecto dev', projectUuid: null });
+  assert.deepEqual(await host.connect(), { name: 'Claude 아티팩트 · AiNecto dev', projectUuid: null, version: null });
   assert.deepEqual(await host.callTool('get_my_work_summary', {}), SUMMARY);
   assert.deepEqual(calls, [['AiNecto dev', 'get_my_work_summary', {}]]);
   assert.equal(host.openLink, undefined);
@@ -202,8 +205,8 @@ test('artifact host: watchTool keeps reads current at the 30-second floor; inval
       invalidated.push([server, tool, input]);
     },
   };
-  const host = createArtifactHost(fakeClaude({ mcp }), { projectUuid: 'p-1' });
-  assert.deepEqual(await host.connect(), { name: 'Claude 아티팩트 · AiNecto dev', projectUuid: 'p-1' });
+  const host = createArtifactHost(fakeClaude({ mcp }), { projectUuid: 'p-1', version: 'abc123def456' });
+  assert.deepEqual(await host.connect(), { name: 'Claude 아티팩트 · AiNecto dev', projectUuid: 'p-1', version: 'abc123def456' });
   const events = [];
   const stop = host.watch('conversation_list', { projectUuid: 'p-1' }, (ev) => events.push(ev));
   assert.deepEqual(watched[0], ['AiNecto dev', 'conversation_list', { projectUuid: 'p-1' }, { refetchInterval: POLL_MS }]);
@@ -435,4 +438,36 @@ test('export: fills the one project slot with a checked uuid; capabilities name 
     user: { scopes: ['profile'] },
     comments: { customAnchors: true },
   });
+});
+
+test('artifact version (KAN-404): the page hash before its slot, in the page and in the file ainecto-api copies', () => {
+  const { html, version } = buildArtifact();
+  assert.match(version, /^[0-9a-f]{12}$/);
+  const slot = versionSlot(version);
+  assert.equal(html.split(slot).length, 2, 'one version slot');
+  assert.equal(artifactVersion(html.replace(slot, '')), version, 'the version is the page without its slot');
+  assert.equal(readFileSync(join(ROOT, OUT_ARTIFACT_VERSION), 'utf8'), version + '\n');
+  // the export fills the project, not the version
+  assert.ok(exportPage(html, 'a8b8fee3-05ed-4383-824d-7e59d7cf66ea').includes(slot));
+  // any source change moves it
+  assert.notEqual(artifactVersion(html.replace(slot, '').replace('<title>', '<title> ')), version);
+});
+
+test('panelUpdate: offered only when both are versions and differ', () => {
+  assert.deepEqual(panelUpdate('abc123def456', '0123456789ab'), { from: 'abc123def456', to: '0123456789ab' });
+  assert.equal(panelUpdate('abc123def456', 'abc123def456'), null);
+  assert.equal(panelUpdate('abc123def456', undefined), null);
+  assert.equal(panelUpdate(null, '0123456789ab'), null);
+  assert.equal(panelUpdate('abc123def456', '<script>'), null);
+});
+
+test('updateRequestForClaude: the republish request as the short panel text, nothing quoted', () => {
+  const ctx = updateRequestForClaude({ projectUuid: 'p-1', from: 'abc123def456', to: '0123456789ab' });
+  assert.deepEqual(ctx.refs, { projectUuid: 'p-1', fromVersion: 'abc123def456', toVersion: '0123456789ab' });
+  const text = contextText(ctx);
+  assert.match(text, /^\[AiNecto 패널\] 패널 새 버전\n요청: /);
+  assert.match(text, /같은 주소에 다시 게시/);
+  assert.match(text, /panel\.howToUpdate/);
+  assert.match(text, /abc123def456[\s\S]*0123456789ab/);
+  assert.doesNotMatch(text, /^> /m);
 });

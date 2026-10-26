@@ -6,6 +6,8 @@
 //   mcp-app/dist/ainecto-panel.html           MCP App (ChatGPT, the Codex app, Claude conversations), served by ainecto-api
 //   mcp-app/dist/ainecto-panel-artifact.html  a Claude artifact beside the conversation (the page body only:
 //                                             the artifact publisher adds the document skeleton)
+//   mcp-app/dist/ainecto-panel-artifact.version  that page's version (KAN-404): each person publishes their own copy,
+//                                             so the page carries its version and asks the server for the newest one
 //
 // The panel's data rules live in plugins/ainecto-panel/hooks/inbox.js (the Claude Code pane's file); the
 // build inlines that same file, so the two panes cannot drift. MCP App hosts load the HTML with no
@@ -27,6 +29,7 @@ export const OUT_HTML = 'mcp-app/dist/ainecto-panel.html';
 export const OUT_SHA = 'mcp-app/dist/ainecto-panel.html.sha256';
 export const ARTIFACT_MODULES = [INBOX, 'mcp-app/panel.js', 'mcp-app/artifact-host.js', 'mcp-app/artifact.js'];
 export const OUT_ARTIFACT = 'mcp-app/dist/ainecto-panel-artifact.html';
+export const OUT_ARTIFACT_VERSION = 'mcp-app/dist/ainecto-panel-artifact.version';
 const SLOT = '/*@@BUNDLE@@*/';
 
 const IMPORT_RE = /^import\s*\{([^}]*)\}\s*from\s*'([^']+)';?[ \t]*$/gm;
@@ -100,13 +103,28 @@ export const PROJECT_SLOT_ID = 'ainecto-project';
 export const projectSlot = (projectUuid) =>
   `<script type="application/json" id="${PROJECT_SLOT_ID}">${JSON.stringify({ projectUuid })}</script>`;
 
-/** Reads the sources and returns the artifact page { html } (its project slot empty). */
+/**
+ * The artifact page's version slot (KAN-404): JSON the page reads at start (mcp-app/artifact.js) and compares with the
+ * newest version the server names (open_ainecto_panel → panel.artifactVersion, from the copy scripts/copy-mcp-app.mjs
+ * puts in ainecto-api). The version is the page's own content hash, taken before the slot goes in — one build makes both.
+ */
+export const VERSION_SLOT_ID = 'ainecto-panel-version';
+export const versionSlot = (version) =>
+  `<script type="application/json" id="${VERSION_SLOT_ID}">${JSON.stringify(version)}</script>`;
+
+/** Pure: the page without its version slot → its version (the first 12 hex digits of its sha256). */
+export const artifactVersion = (html) => createHash('sha256').update(html, 'utf8').digest('hex').slice(0, 12);
+
+/** Reads the sources and returns the artifact page { html, version } (its project slot empty). */
 export function buildArtifact(root = ROOT) {
   const { banner, html } = page(root, 'Claude artifact', ARTIFACT_MODULES);
   const body = toArtifactPage(html);
   const at = body.indexOf('\n<script>\n');
   if (at < 0) throw new Error(`${TEMPLATE}: no inline <script> to put the project slot before`);
-  return { html: banner + body.slice(0, at + 1) + projectSlot(null) + body.slice(at) };
+  const head = banner + body.slice(0, at + 1) + projectSlot(null);
+  const tail = body.slice(at);
+  const version = artifactVersion(head + tail);
+  return { html: head + versionSlot(version) + tail, version };
 }
 
 /** The .sha256 file content (the `sha256sum` format). */
@@ -117,8 +135,9 @@ export function sha256Line(html) {
 /** Paths whose committed content differs from a fresh build. */
 export function diffAgainstDisk(root = ROOT) {
   const { html, sha256 } = build(root);
+  const artifact = buildArtifact(root);
   const stale = [];
-  for (const [rel, want] of [[OUT_HTML, html], [OUT_SHA, sha256], [OUT_ARTIFACT, buildArtifact(root).html]]) {
+  for (const [rel, want] of [[OUT_HTML, html], [OUT_SHA, sha256], [OUT_ARTIFACT, artifact.html], [OUT_ARTIFACT_VERSION, artifact.version + '\n']]) {
     const path = join(root, rel);
     if (!existsSync(path) || readFileSync(path, 'utf8') !== want) stale.push(rel);
   }
@@ -139,8 +158,9 @@ if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
     writeFileSync(join(ROOT, OUT_HTML), html);
     writeFileSync(join(ROOT, OUT_SHA), sha256);
     console.log(`wrote ${relative(process.cwd(), join(ROOT, OUT_HTML))} (${html.length} chars) sha256 ${sha256.split(' ')[0]}`);
-    const artifact = buildArtifact().html;
-    writeFileSync(join(ROOT, OUT_ARTIFACT), artifact);
-    console.log(`wrote ${relative(process.cwd(), join(ROOT, OUT_ARTIFACT))} (${artifact.length} chars)`);
+    const artifact = buildArtifact();
+    writeFileSync(join(ROOT, OUT_ARTIFACT), artifact.html);
+    writeFileSync(join(ROOT, OUT_ARTIFACT_VERSION), artifact.version + '\n');
+    console.log(`wrote ${relative(process.cwd(), join(ROOT, OUT_ARTIFACT))} (${artifact.html.length} chars) version ${artifact.version}`);
   }
 }

@@ -42,14 +42,17 @@ function published(body) {
 const playwright = await loadPlaywright();
 
 /** The exported page in a Chromium page (400px unless `width`) with the stand-in runtime; `problems` collects console errors. */
-async function openPanel(browser, { clock = false, canSend = 'available', comments = null, width = WIDTH } = {}) {
+async function openPanel(browser, { clock = false, canSend = 'available', comments = null, width = WIDTH, latest = null } = {}) {
   const context = await browser.newContext({ viewport: { width, height: 760 } });
   const page = await context.newPage();
   const problems = [];
   page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   if (clock) await page.clock.install();
-  await page.addInitScript(([p, c, m]) => ((window.__FAKE_PROJECT__ = p), (window.__FAKE_CAN_SEND__ = c), (window.__FAKE_COMMENTS__ = m)), [PROJECT, canSend, comments]);
+  await page.addInitScript(
+    ([p, c, m, v]) => ((window.__FAKE_PROJECT__ = p), (window.__FAKE_CAN_SEND__ = c), (window.__FAKE_COMMENTS__ = m), (window.__FAKE_LATEST_VERSION__ = v)),
+    [PROJECT, canSend, comments, latest],
+  );
   await page.addInitScript({ path: join(ROOT, 'test/fixtures/fake-artifact-runtime.js') });
   // Served from a URL (not setContent) so the init scripts run before the page, as the runtime's do.
   const html = published(exportPage(buildArtifact().html, PROJECT));
@@ -400,6 +403,65 @@ test('artifact page: content stops at 560px and centres in a wide pane, fits a 3
           assert.ok(card.width <= 560, `${width}px: card is ${card.width}px wide`);
         }
       }
+      assert.deepEqual(problems, []);
+      await page.context().close();
+    }
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artifact page: a newer panel — «새 버전이 있습니다 · 업데이트» sends the republish request; the same version shows nothing (KAN-404)', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    const { version } = buildArtifact();
+    const versionCall = (fake) => fake(() => window.__fake.calls.find((c) => c.tool === 'open_ainecto_panel'));
+
+    // Same version: asked once with the project, nothing shown.
+    {
+      const { page, problems, fake } = await openPanel(browser, { latest: version, comments: 'available' });
+      await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+      await page.waitForFunction(() => window.__fake.calls.some((c) => c.tool === 'open_ainecto_panel'));
+      assert.deepEqual((await versionCall(fake)).input, { projectUuid: PROJECT });
+      await page.waitForTimeout(100);
+      assert.equal(await page.locator('#update').isHidden(), true, 'same version: no update bar');
+      assert.deepEqual(problems, []);
+      await page.context().close();
+    }
+    // A server that names no version (older api): nothing shown, no error.
+    {
+      const { page, problems } = await openPanel(browser, { comments: 'available' });
+      await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+      await page.waitForFunction(() => window.__fake.calls.some((c) => c.tool === 'open_ainecto_panel'));
+      await page.waitForTimeout(100);
+      assert.equal(await page.locator('#update').isHidden(), true, 'no version named: no update bar');
+      assert.deepEqual(problems, []);
+      await page.context().close();
+    }
+    // Newer version: the bar above the tabs; «업데이트» is one comments.sendToClaude with the republish request.
+    {
+      const { page, problems, fake } = await openPanel(browser, { latest: '0123456789ab', comments: 'available' });
+      const bar = page.locator('#update');
+      await bar.getByText('새 버전이 있습니다').waitFor();
+      const [barBox, tabsBox] = [await bar.boundingBox(), await page.locator('#tabs').boundingBox()];
+      assert.ok(barBox.y < tabsBox.y, 'the bar is above the tabs');
+      await bar.getByRole('button', { name: '업데이트' }).click();
+      await page.waitForFunction(() => window.__fake.comments.sent.length === 1);
+      const sent = await fake(() => window.__fake.comments.sent[0]);
+      assert.match(sent.text, /^\[AiNecto 패널\] 패널 새 버전\n요청: /);
+      assert.ok(sent.text.includes(version) && sent.text.includes('0123456789ab'));
+      assert.match(sent.text, /같은 주소에 다시 게시/);
+      await page.getByText('답은 옆 대화창에 옵니다').waitFor();
+      assert.deepEqual(problems, []);
+      await page.context().close();
+    }
+    // Newer version where «AI에게» cannot go: no button, what to tell Claude instead.
+    {
+      const { page, problems } = await openPanel(browser, { latest: '0123456789ab', canSend: 'no_session' });
+      const bar = page.locator('#update');
+      await bar.getByText('새 버전이 있습니다').waitFor();
+      await bar.getByText('같은 주소에 다시 게시해 줘').waitFor();
+      assert.equal(await bar.getByRole('button').count(), 0);
       assert.deepEqual(problems, []);
       await page.context().close();
     }

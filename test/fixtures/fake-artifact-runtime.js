@@ -111,6 +111,12 @@
     },
     get_my_work_summary: () => ({ notifications: { unread: store.notifications.filter((n) => !n.humanRead).length, unreadCapped: false } }),
     list_notifications: ({ order }) => ({ items: order === 'newest' ? store.notifications : [...store.notifications].reverse(), nextCursor: null, hasMore: false, order }),
+    // KAN-404: the newest panel version as ainecto-api names it (window.__FAKE_LATEST_VERSION__; absent = an older
+    // server that names none).
+    open_ainecto_panel: ({ projectUuid } = {}) => ({
+      notifications: { unread: 0 },
+      panel: { label: 'Claude app panel', projectUuid, ...(window.__FAKE_LATEST_VERSION__ ? { artifactVersion: window.__FAKE_LATEST_VERSION__ } : {}) },
+    }),
     mark_notifications_read: ({ items }) => {
       for (const it of items) {
         const n = store.notifications.find((x) => x.id === it.id);
@@ -119,7 +125,7 @@
       return { results: items.map((it) => ({ id: it.id, ok: true })) };
     },
   };
-  const READ_ONLY = new Set(['identity_get_self', 'conversation_list', 'conversation_get_messages', 'get_my_work_summary', 'list_notifications']);
+  const READ_ONLY = new Set(['identity_get_self', 'conversation_list', 'conversation_get_messages', 'get_my_work_summary', 'list_notifications', 'open_ainecto_panel']);
 
   // Send controls for the test: hold the answer to conversation_send (stored at once, answered on release),
   // or fail the next sends before they are stored (server_unavailable).

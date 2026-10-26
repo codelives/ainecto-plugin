@@ -109,7 +109,7 @@ The HTML is built here and served by ainecto-api, which keeps a copy:
 
 ```bash
 npm run build:app                          # mcp-app/{panel.html,panel.js,…} + hooks/inbox.js → mcp-app/dist/ (both pages)
-npm run copy:app -- ../ainecto-api         # copy the HTML and its .sha256 into ainecto-api
+npm run copy:app -- ../ainecto-api         # copy the HTML and its .sha256 (and the artifact page's version) into ainecto-api
 ```
 
 `npm test` fails when `mcp-app/dist/` is not a fresh build; ainecto-api's `McpAppResourcesTest` fails when its
@@ -148,6 +148,14 @@ project with `update_projects` (`panelArtifactUrl`) opens only for people in the
 organization it was shared in, and `open_ainecto_panel` only shows it with that condition. Each viewer needs the
 AiNecto connector with its write tools (`conversation_send`, `conversation_mark_read`, `mark_notifications_read`) on
 «Always allow»: a tool that needs approval is not available to artifacts.
+
+A published panel is a copy, so it does not change when the page here does (KAN-404). The build puts the page's version
+(the first 12 hex digits of its sha256, taken before the slot goes in) in a slot and in
+`mcp-app/dist/ainecto-panel-artifact.version`, which `copy:app` takes to ainecto-api. When the panel opens it reads
+`open_ainecto_panel` once; when `panel.artifactVersion` differs from its own it shows «새 버전이 있습니다 · 업데이트»
+above the tabs, and «업데이트» sends Claude «[AiNecto 패널] 패널 새 버전» the way «AI에게» sends an item: Claude
+republishes the same artifact (same link, the sidebar pin stays) from the guide document (`panel.howToUpdate`). Update
+the guide's HTML document before ainecto-api names the new version, or the republish brings back the old page.
 
 ```bash
 AINECTO_PLAYWRIGHT_FROM=../ainecto-front npm run test:artifact   # the exported page in Chromium with a stand-in runtime

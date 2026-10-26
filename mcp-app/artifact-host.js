@@ -92,10 +92,11 @@ export function roomBridge(room, user, log = () => {}) {
 
 /**
  * @param {{ use?: (name: string) => Promise<any> } | undefined} claude the page's `window.claude`
- * @param {{ projectUuid?: string | null }} [options] the project this artifact was published for
+ * @param {{ projectUuid?: string | null, version?: string | null }} [options] the project this artifact was published
+ *   for, and the page's own version (its build's version slot) — the panel compares it with the newest (KAN-404)
  * @returns the host startPanel takes (links stay plain <a>: the artifact opens them in a new tab)
  */
-export function createArtifactHost(claude, { projectUuid = null } = {}) {
+export function createArtifactHost(claude, { projectUuid = null, version = null } = {}) {
   let mcp = null;
   let server = null;
   let room = null;
@@ -233,7 +234,7 @@ export function createArtifactHost(claude, { projectUuid = null } = {}) {
         };
       }
       if (p) host.managePermissions = () => p.manage().catch(() => {});
-      return { name: `Claude 아티팩트 · ${server}`, projectUuid };
+      return { name: `Claude 아티팩트 · ${server}`, projectUuid, version };
     },
     async callTool(name, args) {
       try {

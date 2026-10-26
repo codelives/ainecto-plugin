@@ -3,11 +3,12 @@
 // ui://ainecto/panel (KAN-369). The HTML's source of truth is this repository; ainecto-api only holds a copy.
 //   node scripts/copy-mcp-app.mjs <ainecto-api checkout>
 // Refuses when the build here is stale. Copies the HTML and its .sha256; ainecto-api's
-// McpAppResourcesTest fails when the two stop matching (an edit made there by hand).
+// McpAppResourcesTest fails when the two stop matching (an edit made there by hand). Also copies the artifact page's
+// version (KAN-404), which ainecto-api names as the newest panel in open_ainecto_panel (panel.artifactVersion).
 import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { ROOT, OUT_HTML, OUT_SHA, diffAgainstDisk } from './build-mcp-app.mjs';
+import { ROOT, OUT_HTML, OUT_SHA, OUT_ARTIFACT_VERSION, diffAgainstDisk } from './build-mcp-app.mjs';
 
 /** Where ainecto-api keeps the copy (its classpath resource folder). */
 export const API_DIR = 'src/main/resources/mcp-apps';
@@ -28,7 +29,7 @@ if (stale.length) {
   process.exit(1);
 }
 mkdirSync(join(api, API_DIR), { recursive: true });
-for (const rel of [OUT_HTML, OUT_SHA]) {
+for (const rel of [OUT_HTML, OUT_SHA, OUT_ARTIFACT_VERSION]) {
   const name = rel.split('/').pop();
   copyFileSync(join(ROOT, rel), join(api, API_DIR, name));
   console.log(`copied ${rel} → ${join(API_DIR, name)}`);

@@ -690,6 +690,41 @@ export function contextText(ctx) {
   return out;
 }
 
+// ── A newer panel (KAN-404) ──
+
+const VERSION_RE = /^[0-9a-f]{6,64}$/;
+
+/**
+ * The page's own version against the newest the server names (open_ainecto_panel → panel.artifactVersion):
+ * { from, to } when both are versions and differ, else null — an unknown answer never shows the update bar.
+ */
+export function panelUpdate(mine, latest) {
+  const from = typeof mine === 'string' ? mine.trim() : '';
+  const to = typeof latest === 'string' ? latest.trim() : '';
+  return VERSION_RE.test(from) && VERSION_RE.test(to) && from !== to ? { from, to } : null;
+}
+
+/**
+ * The «업데이트» hand-off: asks the viewer's own Claude to republish this panel artifact at the same address (the
+ * sidebar pin stays). Same shape as contextForClaude, so every host sends it the way it sends an item; nobody else's
+ * words go in, so there is nothing quoted. The AiNecto connector's instructions and open_ainecto_panel's
+ * panel.howToUpdate say how.
+ *   [AiNecto 패널] 패널 새 버전
+ *   요청: …
+ */
+export function updateRequestForClaude({ projectUuid, from, to }) {
+  return {
+    label: 'AiNecto · 패널 새 버전',
+    source: 'ainecto-panel',
+    kind: 'panel_update',
+    quoted: {},
+    refs: compact({ projectUuid, fromVersion: from, toVersion: to }),
+    ask:
+      `이 AiNecto 패널 아티팩트(이 요청을 보낸 패널)를 최신 버전으로 같은 주소에 다시 게시해 주세요 — 지금 ${from}, 최신 ${to}. ` +
+      'open_ainecto_panel 을 불러 panel.howToUpdate 대로 하고, 새 아티팩트를 만들지 마세요.',
+  };
+}
+
 // ── Time as the panel shows it ──
 
 /** `오후 2:29` in the viewer's time zone, or '' when it does not parse. */

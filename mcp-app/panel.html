@@ -59,6 +59,9 @@
   .banner { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--surface); color: var(--fg-2); font-size: 12px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
   .banner.error { background: var(--danger-soft); color: var(--danger); }
   .banner button { border: 0; background: none; color: inherit; text-decoration: underline; padding: 0; }
+  .banner.update { background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; }
+  .banner.update button { font-weight: 600; }
+  .banner.update .update-why { font-weight: 400; }
   .view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .head { display: flex; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); flex-shrink: 0; }
   .head .back { border: 0; background: none; color: var(--fg-3); font-size: 20px; line-height: 1; padding: 2px 4px 2px 0; }
@@ -149,6 +152,7 @@
 </head>
 <body>
 <div class="app">
+  <div id="update" class="banner update" role="status" hidden></div>
   <nav id="tabs" class="tabs" aria-label="AiNecto 패널"></nav>
   <div id="comment-mode" class="banner" role="status" hidden></div>
   <div id="banner" class="banner" role="status" hidden></div>

@@ -60,6 +60,9 @@
   .banner { margin: 10px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--surface); color: var(--fg-2); font-size: 12px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
   .banner.error { background: var(--danger-soft); color: var(--danger); }
   .banner button { border: 0; background: none; color: inherit; text-decoration: underline; padding: 0; }
+  .banner.update { background: var(--accent-soft); color: var(--accent-ink); font-weight: 500; }
+  .banner.update button { font-weight: 600; }
+  .banner.update .update-why { font-weight: 400; }
   .view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
   .head { display: flex; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); flex-shrink: 0; }
   .head .back { border: 0; background: none; color: var(--fg-3); font-size: 20px; line-height: 1; padding: 2px 4px 2px 0; }
@@ -150,6 +153,7 @@
 </head>
 <body>
 <div class="app">
+  <div id="update" class="banner update" role="status" hidden></div>
   <nav id="tabs" class="tabs" aria-label="AiNecto 패널"></nav>
   <div id="comment-mode" class="banner" role="status" hidden></div>
   <div id="banner" class="banner" role="status" hidden></div>
@@ -881,6 +885,41 @@ function contextText(ctx) {
   return out;
 }
 
+// ── A newer panel (KAN-404) ──
+
+const VERSION_RE = /^[0-9a-f]{6,64}$/;
+
+/**
+ * The page's own version against the newest the server names (open_ainecto_panel → panel.artifactVersion):
+ * { from, to } when both are versions and differ, else null — an unknown answer never shows the update bar.
+ */
+function panelUpdate(mine, latest) {
+  const from = typeof mine === 'string' ? mine.trim() : '';
+  const to = typeof latest === 'string' ? latest.trim() : '';
+  return VERSION_RE.test(from) && VERSION_RE.test(to) && from !== to ? { from, to } : null;
+}
+
+/**
+ * The «업데이트» hand-off: asks the viewer's own Claude to republish this panel artifact at the same address (the
+ * sidebar pin stays). Same shape as contextForClaude, so every host sends it the way it sends an item; nobody else's
+ * words go in, so there is nothing quoted. The AiNecto connector's instructions and open_ainecto_panel's
+ * panel.howToUpdate say how.
+ *   [AiNecto 패널] 패널 새 버전
+ *   요청: …
+ */
+function updateRequestForClaude({ projectUuid, from, to }) {
+  return {
+    label: 'AiNecto · 패널 새 버전',
+    source: 'ainecto-panel',
+    kind: 'panel_update',
+    quoted: {},
+    refs: compact({ projectUuid, fromVersion: from, toVersion: to }),
+    ask:
+      `이 AiNecto 패널 아티팩트(이 요청을 보낸 패널)를 최신 버전으로 같은 주소에 다시 게시해 주세요 — 지금 ${from}, 최신 ${to}. ` +
+      'open_ainecto_panel 을 불러 panel.howToUpdate 대로 하고, 새 아티팩트를 만들지 마세요.',
+  };
+}
+
 // ── Time as the panel shows it ──
 
 /** `오후 2:29` in the viewer's time zone, or '' when it does not parse. */
@@ -924,7 +963,7 @@ function initialOf(name) {
   return first ? first.toUpperCase() : '?';
 }
 
-return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, clockKo, stampKo, dayKo, whenKo, initialOf };
+return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
 })();
 
 // ── mcp-app/bridge.js ──
@@ -1043,7 +1082,9 @@ const __mcp_app_panel_js = (() => {
 //   mcp-app/artifact.js  a Claude artifact beside the conversation — mcp-app/dist/ainecto-panel-artifact.html
 //
 // host: {
-//   connect({ showToolResult, stop }) → Promise<{ name, projectUuid? }>   rejects when it cannot connect
+//   connect({ showToolResult, stop }) → Promise<{ name, projectUuid?, version? }>   rejects when it cannot connect;
+//                                                  `version` = this page's own version (a Claude artifact: each person
+//                                                  publishes a copy, so the panel asks for the newest — KAN-404)
 //   callTool(name, args) → Promise<MCP tools/call result>   rejects on failure (err.code, err.retryable)
 //   watch?(name, args, onEvent) → unsubscribe     keeps a read current: onEvent({ result }) or onEvent({ error })
 //   refresh?(name, args) → Promise                 re-reads a watched call now
@@ -1069,7 +1110,9 @@ const __mcp_app_panel_js = (() => {
 //   agent's saved position.
 // - Writes happen only when the viewer presses something: conversation_send, conversation_mark_read (when a
 //   conversation is on screen with unread messages), mark_notifications_read.
-const { ALERT_PAGE, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, messageGap, mutationId, newerThanKnown, PANEL_TABS, parseSignal, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
+// - A page that knows its version (host.connect → version) reads open_ainecto_panel once when it opens; when the
+//   server names a newer one, «새 버전이 있습니다 · 업데이트» hands the viewer's Claude the republish request.
+const { ALERT_PAGE, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, messageGap, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
 
 /**
  * Every AiNecto tool this panel calls. A Claude artifact must name exactly these in its `mcp` manifest
@@ -1084,6 +1127,7 @@ const PANEL_TOOLS = [
   'get_my_work_summary',
   'list_notifications',
   'mark_notifications_read',
+  'open_ainecto_panel',
 ];
 
 // ── State. Lost when the host tears the panel down; the next open reads the server again. ──
@@ -1120,6 +1164,8 @@ let stopMessages = null;
 let lastTimelineKey = '';
 let ready = false; // identity read: the viewer is known, so the project's reads can start
 let pendingProject = null;
+let pageVersion = null; // this page's version, when the host knows it (a Claude artifact)
+let update = null; // { from, to } once the server named a newer panel (open_ainecto_panel → panel.artifactVersion)
 const reads = new Map(); // key → { name, args, read() } for hosts without watch
 
 const $ = (id) => document.getElementById(id);
@@ -1328,6 +1374,21 @@ function onSignal(data) {
   known = { ...known, [s.c]: s.s };
   refresh('conversation_list', listArgs());
   if (s.c === shownConversationUuid()) refresh('conversation_get_messages', messageArgs(s.c));
+}
+
+// ── A newer panel (KAN-404) ──
+
+/**
+ * Once per open: the newest panel version the server knows, against this page's. Any failure leaves the bar hidden
+ * (callTool has logged it) — the panel works the same without the check.
+ */
+async function checkVersion() {
+  if (!pageVersion) return;
+  const r = await callTool('open_ainecto_panel', projectUuid ? { projectUuid } : {});
+  if (!r.ok) return;
+  update = panelUpdate(pageVersion, r.data?.panel?.artifactVersion);
+  console.info(`[ainecto-panel] version ${pageVersion}, newest ${r.data?.panel?.artifactVersion ?? '?'}${update ? ' — update offered' : ''}`);
+  render();
 }
 
 // ── Buttons ──
@@ -1594,6 +1655,17 @@ function renderBanner() {
   b.replaceChildren(...[el('span', {}, banner.text), banner.action ? el('button', { type: 'button', onClick: banner.action[1] }, banner.action[0]) : null].filter(Boolean));
 }
 
+/** «새 버전이 있습니다 · 업데이트» above the tabs; where «AI에게» cannot go, what to tell Claude instead. */
+function renderUpdate() {
+  const b = $('update');
+  b.hidden = !update;
+  if (!update) return;
+  const ask = canAsk
+    ? el('button', { type: 'button', onClick: (event) => askAi(updateRequestForClaude({ projectUuid, ...update }), event) }, '업데이트')
+    : el('span', { className: 'update-why' }, '옆 Claude 대화에 «AiNecto 패널을 최신 버전으로 같은 주소에 다시 게시해 줘» 라고 말하세요');
+  b.replaceChildren(el('span', {}, '새 버전이 있습니다'), ask);
+}
+
 function renderCommentMode() {
   const b = $('comment-mode');
   b.hidden = !commentMode;
@@ -1793,6 +1865,7 @@ function renderFoot() {
 }
 
 function render() {
+  renderUpdate();
   renderTabs();
   renderCommentMode();
   renderBanner();
@@ -1900,6 +1973,7 @@ async function startPanel(theHost) {
     return;
   }
   hostName = connected?.name ?? '';
+  pageVersion = connected?.version ?? null;
   console.info(`[ainecto-panel] connected: ${hostName}`);
   const self = await callTool('identity_get_self', {});
   if (self.ok) me = { userId: self.data?.userId, displayName: self.data?.displayName };
@@ -1934,6 +2008,7 @@ async function startPanel(theHost) {
     render();
   }
   updateCanAsk();
+  checkVersion();
 }
 
 return { PANEL_TOOLS, startPanel };

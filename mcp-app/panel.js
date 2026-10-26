@@ -6,7 +6,9 @@
 //   mcp-app/artifact.js  a Claude artifact beside the conversation — mcp-app/dist/ainecto-panel-artifact.html
 //
 // host: {
-//   connect({ showToolResult, stop }) → Promise<{ name, projectUuid? }>   rejects when it cannot connect
+//   connect({ showToolResult, stop }) → Promise<{ name, projectUuid?, version? }>   rejects when it cannot connect;
+//                                                  `version` = this page's own version (a Claude artifact: each person
+//                                                  publishes a copy, so the panel asks for the newest — KAN-404)
 //   callTool(name, args) → Promise<MCP tools/call result>   rejects on failure (err.code, err.retryable)
 //   watch?(name, args, onEvent) → unsubscribe     keeps a read current: onEvent({ result }) or onEvent({ error })
 //   refresh?(name, args) → Promise                 re-reads a watched call now
@@ -32,6 +34,8 @@
 //   agent's saved position.
 // - Writes happen only when the viewer presses something: conversation_send, conversation_mark_read (when a
 //   conversation is on screen with unread messages), mark_notifications_read.
+// - A page that knows its version (host.connect → version) reads open_ainecto_panel once when it opens; when the
+//   server names a newer one, «새 버전이 있습니다 · 업데이트» hands the viewer's Claude the republish request.
 import {
   ALERT_PAGE,
   ALONE_POLL_MS,
@@ -50,6 +54,7 @@ import {
   newerThanKnown,
   PANEL_TABS,
   parseSignal,
+  panelUpdate,
   parseToolResult,
   POLL_MS,
   readLabel,
@@ -58,6 +63,7 @@ import {
   signalOf,
   tabCounts,
   typingIn,
+  updateRequestForClaude,
   whenKo,
 } from '../plugins/ainecto-panel/hooks/inbox.js';
 
@@ -74,6 +80,7 @@ export const PANEL_TOOLS = [
   'get_my_work_summary',
   'list_notifications',
   'mark_notifications_read',
+  'open_ainecto_panel',
 ];
 
 // ── State. Lost when the host tears the panel down; the next open reads the server again. ──
@@ -110,6 +117,8 @@ let stopMessages = null;
 let lastTimelineKey = '';
 let ready = false; // identity read: the viewer is known, so the project's reads can start
 let pendingProject = null;
+let pageVersion = null; // this page's version, when the host knows it (a Claude artifact)
+let update = null; // { from, to } once the server named a newer panel (open_ainecto_panel → panel.artifactVersion)
 const reads = new Map(); // key → { name, args, read() } for hosts without watch
 
 const $ = (id) => document.getElementById(id);
@@ -318,6 +327,21 @@ function onSignal(data) {
   known = { ...known, [s.c]: s.s };
   refresh('conversation_list', listArgs());
   if (s.c === shownConversationUuid()) refresh('conversation_get_messages', messageArgs(s.c));
+}
+
+// ── A newer panel (KAN-404) ──
+
+/**
+ * Once per open: the newest panel version the server knows, against this page's. Any failure leaves the bar hidden
+ * (callTool has logged it) — the panel works the same without the check.
+ */
+async function checkVersion() {
+  if (!pageVersion) return;
+  const r = await callTool('open_ainecto_panel', projectUuid ? { projectUuid } : {});
+  if (!r.ok) return;
+  update = panelUpdate(pageVersion, r.data?.panel?.artifactVersion);
+  console.info(`[ainecto-panel] version ${pageVersion}, newest ${r.data?.panel?.artifactVersion ?? '?'}${update ? ' — update offered' : ''}`);
+  render();
 }
 
 // ── Buttons ──
@@ -584,6 +608,17 @@ function renderBanner() {
   b.replaceChildren(...[el('span', {}, banner.text), banner.action ? el('button', { type: 'button', onClick: banner.action[1] }, banner.action[0]) : null].filter(Boolean));
 }
 
+/** «새 버전이 있습니다 · 업데이트» above the tabs; where «AI에게» cannot go, what to tell Claude instead. */
+function renderUpdate() {
+  const b = $('update');
+  b.hidden = !update;
+  if (!update) return;
+  const ask = canAsk
+    ? el('button', { type: 'button', onClick: (event) => askAi(updateRequestForClaude({ projectUuid, ...update }), event) }, '업데이트')
+    : el('span', { className: 'update-why' }, '옆 Claude 대화에 «AiNecto 패널을 최신 버전으로 같은 주소에 다시 게시해 줘» 라고 말하세요');
+  b.replaceChildren(el('span', {}, '새 버전이 있습니다'), ask);
+}
+
 function renderCommentMode() {
   const b = $('comment-mode');
   b.hidden = !commentMode;
@@ -783,6 +818,7 @@ function renderFoot() {
 }
 
 function render() {
+  renderUpdate();
   renderTabs();
   renderCommentMode();
   renderBanner();
@@ -890,6 +926,7 @@ export async function startPanel(theHost) {
     return;
   }
   hostName = connected?.name ?? '';
+  pageVersion = connected?.version ?? null;
   console.info(`[ainecto-panel] connected: ${hostName}`);
   const self = await callTool('identity_get_self', {});
   if (self.ok) me = { userId: self.data?.userId, displayName: self.data?.displayName };
@@ -924,4 +961,5 @@ export async function startPanel(theHost) {
     render();
   }
   updateCanAsk();
+  checkVersion();
 }
