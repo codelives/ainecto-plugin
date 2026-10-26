@@ -8,17 +8,23 @@
 //                                             the artifact publisher adds the document skeleton)
 //   mcp-app/dist/ainecto-panel-artifact.version  that page's version (KAN-404): each person publishes their own copy,
 //                                             so the page carries its version and asks the server for the newest one
+//   mcp-app/dist/ainecto-panel-artifact.capabilities.json  the capabilities to publish that page with, its connector
+//                                             name left empty (KAN-406): the publishing Claude names its own connector
 //
 // The panel's data rules live in plugins/ainecto-panel/hooks/inbox.js (the Claude Code pane's file); the
 // build inlines that same file, so the two panes cannot drift. MCP App hosts load the HTML with no
 // network (default CSP: no external scripts), so everything is inlined: each module becomes a function
 // scope, its `export`s are returned and its `import { a } from './x.js'` reads them. No dependencies.
 // The ainecto-api server serves a copy of the output (scripts/copy-mcp-app.mjs); the .sha256 file goes
-// with it and both repositories test that the HTML still matches it.
+// with it and both repositories test that the HTML still matches it. ainecto-api also hands the artifact page, its
+// version and its capabilities to Claude in open_ainecto_panel (KAN-406), filling the project slot for the project
+// asked for — this build is the page's only source.
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PANEL_TOOLS } from '../mcp-app/panel.js';
+import { SIGNAL_TOPIC } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 export const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const TEMPLATE = 'mcp-app/panel.html';
@@ -30,6 +36,7 @@ export const OUT_SHA = 'mcp-app/dist/ainecto-panel.html.sha256';
 export const ARTIFACT_MODULES = [INBOX, 'mcp-app/panel.js', 'mcp-app/artifact-host.js', 'mcp-app/artifact.js'];
 export const OUT_ARTIFACT = 'mcp-app/dist/ainecto-panel-artifact.html';
 export const OUT_ARTIFACT_VERSION = 'mcp-app/dist/ainecto-panel-artifact.version';
+export const OUT_ARTIFACT_CAPABILITIES = 'mcp-app/dist/ainecto-panel-artifact.capabilities.json';
 const SLOT = '/*@@BUNDLE@@*/';
 
 const IMPORT_RE = /^import\s*\{([^}]*)\}\s*from\s*'([^']+)';?[ \t]*$/gm;
@@ -97,7 +104,8 @@ export function toArtifactPage(html) {
 
 /**
  * The artifact page's project slot: JSON the page reads at start (mcp-app/artifact.js). The committed build names no
- * project; scripts/export-artifact.mjs fills it for the one project an artifact is published for.
+ * project; ainecto-api fills it for the one project an artifact is published for (open_ainecto_panel with artifactPage,
+ * KAN-406) — its McpAppResources replaces exactly projectSlot(null), so keep the two in step.
  */
 export const PROJECT_SLOT_ID = 'ainecto-project';
 export const projectSlot = (projectUuid) =>
@@ -127,6 +135,24 @@ export function buildArtifact(root = ROOT) {
   return { html: head + versionSlot(version) + tail, version };
 }
 
+/**
+ * The capabilities the artifact page needs (KAN-406), as ainecto-api hands them out: the connector's panel tools, the
+ * signal topic for Contributors, viewers' names, and comments with customAnchors — «AI에게» as comments.sendToClaude,
+ * buttons usable in comment mode (KAN-392). `server` stays empty: it is the AiNecto connector as the publishing
+ * session names it, which differs per claude.ai account.
+ */
+export function artifactCapabilities() {
+  return {
+    mcp: { servers: [{ server: '', tools: [...PANEL_TOOLS] }] },
+    room: { topics: { [SIGNAL_TOPIC]: 'interact' } },
+    user: { scopes: ['profile'] },
+    comments: { customAnchors: true },
+  };
+}
+
+/** The capabilities file content. */
+export const capabilitiesJson = () => JSON.stringify(artifactCapabilities(), null, 2) + '\n';
+
 /** The .sha256 file content (the `sha256sum` format). */
 export function sha256Line(html) {
   return `${createHash('sha256').update(html, 'utf8').digest('hex')}  ainecto-panel.html\n`;
@@ -137,7 +163,7 @@ export function diffAgainstDisk(root = ROOT) {
   const { html, sha256 } = build(root);
   const artifact = buildArtifact(root);
   const stale = [];
-  for (const [rel, want] of [[OUT_HTML, html], [OUT_SHA, sha256], [OUT_ARTIFACT, artifact.html], [OUT_ARTIFACT_VERSION, artifact.version + '\n']]) {
+  for (const [rel, want] of [[OUT_HTML, html], [OUT_SHA, sha256], [OUT_ARTIFACT, artifact.html], [OUT_ARTIFACT_VERSION, artifact.version + '\n'], [OUT_ARTIFACT_CAPABILITIES, capabilitiesJson()]]) {
     const path = join(root, rel);
     if (!existsSync(path) || readFileSync(path, 'utf8') !== want) stale.push(rel);
   }
@@ -161,6 +187,7 @@ if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
     const artifact = buildArtifact();
     writeFileSync(join(ROOT, OUT_ARTIFACT), artifact.html);
     writeFileSync(join(ROOT, OUT_ARTIFACT_VERSION), artifact.version + '\n');
+    writeFileSync(join(ROOT, OUT_ARTIFACT_CAPABILITIES), capabilitiesJson());
     console.log(`wrote ${relative(process.cwd(), join(ROOT, OUT_ARTIFACT))} (${artifact.html.length} chars) version ${artifact.version}`);
   }
 }

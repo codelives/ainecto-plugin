@@ -460,7 +460,7 @@ async function markAlertRead(card) {
 
 /** What the viewer reads after «AI에게», by how the host delivered it. */
 const ASKED = {
-  commented: 'Claude 에게 보냈습니다 — 답은 옆 대화창에 옵니다',
+  commented: 'Claude 에게 보냈습니다 — 답은 댓글 스레드에 옵니다',
   sent: 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요',
   staged: '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요',
 };

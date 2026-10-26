@@ -1,7 +1,7 @@
 // The panel as a Claude artifact (beside the conversation in Claude web and desktop). Built into
-// mcp-app/dist/ainecto-panel-artifact.html with an empty project slot and its version slot; scripts/export-artifact.mjs
-// fills the project slot with one project's uuid and writes the manifest to publish it with (see
-// plugins/ainecto-panel/README.md).
+// mcp-app/dist/ainecto-panel-artifact.html with an empty project slot and its version slot; ainecto-api fills the
+// project slot with one project's uuid and hands the page with its capabilities to Claude (open_ainecto_panel with
+// artifactPage, KAN-406; see plugins/ainecto-panel/README.md).
 import { createArtifactHost } from './artifact-host.js';
 import { startPanel } from './panel.js';
 import { projectUuidOf } from '../plugins/ainecto-panel/hooks/inbox.js';

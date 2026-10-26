@@ -707,8 +707,7 @@ export function panelUpdate(mine, latest) {
 /**
  * The «업데이트» hand-off: asks the viewer's own Claude to republish this panel artifact at the same address (the
  * sidebar pin stays). Same shape as contextForClaude, so every host sends it the way it sends an item; nobody else's
- * words go in, so there is nothing quoted. The AiNecto connector's instructions and open_ainecto_panel's
- * panel.howToUpdate say how.
+ * words go in, so there is nothing quoted. The AiNecto connector's instructions say how to republish (KAN-406).
  *   [AiNecto 패널] 패널 새 버전
  *   요청: …
  */
@@ -721,7 +720,7 @@ export function updateRequestForClaude({ projectUuid, from, to }) {
     refs: compact({ projectUuid, fromVersion: from, toVersion: to }),
     ask:
       `이 AiNecto 패널 아티팩트(이 요청을 보낸 패널)를 최신 버전으로 같은 주소에 다시 게시해 주세요 — 지금 ${from}, 최신 ${to}. ` +
-      'open_ainecto_panel 을 불러 panel.howToUpdate 대로 하고, 새 아티팩트를 만들지 마세요.',
+      '새 아티팩트를 만들지 마세요.',
   };
 }
 

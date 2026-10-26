@@ -1,0 +1,33 @@
+{
+  "mcp": {
+    "servers": [
+      {
+        "server": "",
+        "tools": [
+          "identity_get_self",
+          "conversation_list",
+          "conversation_get_messages",
+          "conversation_send",
+          "conversation_mark_read",
+          "get_my_work_summary",
+          "list_notifications",
+          "mark_notifications_read",
+          "open_ainecto_panel"
+        ]
+      }
+    ]
+  },
+  "room": {
+    "topics": {
+      "conv": "interact"
+    }
+  },
+  "user": {
+    "scopes": [
+      "profile"
+    ]
+  },
+  "comments": {
+    "customAnchors": true
+  }
+}

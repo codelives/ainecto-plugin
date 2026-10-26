@@ -16,7 +16,6 @@
     "test:artifact": "node --test test/artifact-page.e2e.mjs",
     "snapshot-tools": "node scripts/snapshot-tools.mjs",
     "build:app": "node scripts/build-mcp-app.mjs",
-    "copy:app": "node scripts/copy-mcp-app.mjs",
-    "export:artifact": "node scripts/export-artifact.mjs"
+    "copy:app": "node scripts/copy-mcp-app.mjs"
   }
 }

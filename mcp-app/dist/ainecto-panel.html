@@ -902,8 +902,7 @@ function panelUpdate(mine, latest) {
 /**
  * The «업데이트» hand-off: asks the viewer's own Claude to republish this panel artifact at the same address (the
  * sidebar pin stays). Same shape as contextForClaude, so every host sends it the way it sends an item; nobody else's
- * words go in, so there is nothing quoted. The AiNecto connector's instructions and open_ainecto_panel's
- * panel.howToUpdate say how.
+ * words go in, so there is nothing quoted. The AiNecto connector's instructions say how to republish (KAN-406).
  *   [AiNecto 패널] 패널 새 버전
  *   요청: …
  */
@@ -916,7 +915,7 @@ function updateRequestForClaude({ projectUuid, from, to }) {
     refs: compact({ projectUuid, fromVersion: from, toVersion: to }),
     ask:
       `이 AiNecto 패널 아티팩트(이 요청을 보낸 패널)를 최신 버전으로 같은 주소에 다시 게시해 주세요 — 지금 ${from}, 최신 ${to}. ` +
-      'open_ainecto_panel 을 불러 panel.howToUpdate 대로 하고, 새 아티팩트를 만들지 마세요.',
+      '새 아티팩트를 만들지 마세요.',
   };
 }
 
@@ -1507,7 +1506,7 @@ async function markAlertRead(card) {
 
 /** What the viewer reads after «AI에게», by how the host delivered it. */
 const ASKED = {
-  commented: 'Claude 에게 보냈습니다 — 답은 옆 대화창에 옵니다',
+  commented: 'Claude 에게 보냈습니다 — 답은 댓글 스레드에 옵니다',
   sent: 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요',
   staged: '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요',
 };

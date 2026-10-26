@@ -1,4 +1,4 @@
-// The exported artifact page in a real browser (Playwright, Chromium) with a stand-in artifact runtime and AiNecto
+// The artifact page (its project slot filled) in a real browser (Playwright, Chromium) with a stand-in artifact runtime and AiNecto
 // server (test/fixtures/fake-artifact-runtime.js): the three tabs work end to end at side-panel width.
 //   npm run test:artifact
 // Playwright is not a dependency of this repository: the test imports it from this repository if it is installed,
@@ -8,8 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { buildArtifact, ROOT } from '../scripts/build-mcp-app.mjs';
-import { exportPage } from '../scripts/export-artifact.mjs';
+import { buildArtifact, projectSlot, ROOT } from '../scripts/build-mcp-app.mjs';
 
 const PROJECT = 'a8b8fee3-05ed-4383-824d-7e59d7cf66ea';
 const WIDTH = 400;
@@ -55,7 +54,8 @@ async function openPanel(browser, { clock = false, canSend = 'available', commen
   );
   await page.addInitScript({ path: join(ROOT, 'test/fixtures/fake-artifact-runtime.js') });
   // Served from a URL (not setContent) so the init scripts run before the page, as the runtime's do.
-  const html = published(exportPage(buildArtifact().html, PROJECT));
+  // The project slot filled as ainecto-api fills it for open_ainecto_panel (KAN-406).
+  const html = published(buildArtifact().html.replace(projectSlot(null), projectSlot(PROJECT)));
   await page.route('https://artifact.test/', (route) => route.fulfill({ contentType: 'text/html; charset=utf-8', body: html }));
   await page.goto('https://artifact.test/');
   return { page, problems, fake: (fn, arg) => page.evaluate(fn, arg) };
@@ -328,7 +328,7 @@ test('artifact page: comments can send — «AI에게» is one sendToClaude, wor
     assert.match(first.text, /^\[AiNecto 패널\] 프로젝트 룸 — 테스트 프로젝트\n보낸 사람: /);
     assert.match(first.text, /^요청: /m);
     assert.deepEqual(await fake(() => window.__fake.sentToClaude), []);
-    await page.getByText('답은 옆 대화창에 옵니다').waitFor();
+    await page.getByText('답은 댓글 스레드에 옵니다').waitFor();
 
     // Comment mode on: «댓글 모드가 켜져 있습니다 · 끄기», and the card button still works (the shell does not take the click).
     await fake(() => window.__fake.commentMode(true));
@@ -451,7 +451,7 @@ test('artifact page: a newer panel — «새 버전이 있습니다 · 업데이
       assert.match(sent.text, /^\[AiNecto 패널\] 패널 새 버전\n요청: /);
       assert.ok(sent.text.includes(version) && sent.text.includes('0123456789ab'));
       assert.match(sent.text, /같은 주소에 다시 게시/);
-      await page.getByText('답은 옆 대화창에 옵니다').waitFor();
+      await page.getByText('답은 댓글 스레드에 옵니다').waitFor();
       assert.deepEqual(problems, []);
       await page.context().close();
     }

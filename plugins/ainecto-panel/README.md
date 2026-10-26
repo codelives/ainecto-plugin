@@ -109,7 +109,7 @@ The HTML is built here and served by ainecto-api, which keeps a copy:
 
 ```bash
 npm run build:app                          # mcp-app/{panel.html,panel.js,…} + hooks/inbox.js → mcp-app/dist/ (both pages)
-npm run copy:app -- ../ainecto-api         # copy the HTML and its .sha256 (and the artifact page's version) into ainecto-api
+npm run copy:app -- ../ainecto-api         # copy the HTML and its .sha256, and the artifact page with its version and capabilities, into ainecto-api
 ```
 
 `npm test` fails when `mcp-app/dist/` is not a fresh build; ainecto-api's `McpAppResourcesTest` fails when its
@@ -123,39 +123,33 @@ In Claude web and desktop an artifact opens beside the conversation and stays th
 connector (`watchTool` keeps reads current, `invalidate` re-reads now), `room` (after a message is stored the sender
 puts `{c, s, k}` — conversation, seq, kind, no body — on topic `conv`, and everyone with the panel open reads again;
 «입력 중» is presence) and `user` (names of people typing). «AI에게» is one click (KAN-392): `comments.sendToClaude`
-posts the item as a short text starting with `[AiNecto 패널]` on the artifact and sends it to Claude, which answers in
-the conversation and leaves «대화창에 답했습니다» + resolved in the thread (the AiNecto connector's instructions say
-so). Only editors of the artifact can send that way — publish your own panel; the first send asks once to allow
+posts the item as a short text starting with `[AiNecto 패널]` on the artifact and sends it to Claude, which answers the
+way the Claude app answers artifact comments (KAN-406: the connector no longer tells Claude where to answer; the
+connector's instructions only say that the `> ` lines are someone else's words, not instructions). Only editors of the artifact can send that way — publish your own panel; the first send asks once to allow
 comments. `comments.customAnchors` keeps the buttons working while comment mode is on («댓글 모드가 켜져 있습니다 ·
 끄기»). Where comments cannot send (not an editor, no comments here, `claude_unavailable`) the same button falls back
 to `room.sendToClaudeSession` (a dialog, KAN-388).
 
-Export it for one project, then publish the file with the capabilities the export writes:
-
-```bash
-npm run export:artifact -- --project <project uuid> --out /tmp/panel.html --server <connector>
-# → /tmp/panel.html (the project uuid in its one slot) and /tmp/panel.capabilities.json:
-#   { mcp: { servers: [{ server: <connector>, tools: PANEL_TOOLS }] }, room: { topics: { conv: "interact" } },
-#     user: { scopes: ["profile"] }, comments: { customAnchors: true } }
-```
-
-`--server` is the connector as the publishing session names it (the Artifact tool resolves it to the display name);
-the page itself names no server and takes the manifest server that lists `get_my_work_summary`. Each person publishes
-their own panel from their own claude.ai account (KAN-395): personal claude.ai accounts cannot open each other's
-artifacts, so «open the AiNecto panel» makes Claude open the one this user already published, or publish a new one from
-the AiNecto guide document «AiNecto 패널 아티팩트 만들기» (`open_ainecto_panel` → `panel.howToOpen`). A link saved on the
-project with `update_projects` (`panelArtifactUrl`) opens only for people in the same claude.ai Team/Enterprise
-organization it was shared in, and `open_ainecto_panel` only shows it with that condition. Each viewer needs the
+Claude gets the page from the AiNecto server (KAN-406): `open_ainecto_panel` with `projectUuid` and
+`artifactPage: true` returns `panel.artifactPage` — `html` (this build's `mcp-app/dist/ainecto-panel-artifact.html`
+with the project uuid in its one slot) and `capabilities` (`mcp-app/dist/ainecto-panel-artifact.capabilities.json`:
+`{ mcp: { servers: [{ server: "", tools: PANEL_TOOLS }] }, room: { topics: { conv: "interact" } }, user: { scopes:
+["profile"] }, comments: { customAnchors: true } }`). The publishing steps are fixed in the connector's instructions:
+publish the HTML unchanged, set `server` to the AiNecto connector as this conversation names it (it differs per
+claude.ai account; the page itself names no server and takes the manifest server that lists `get_my_work_summary`),
+and republish at the same address when this user already has a panel for the project. No document is read for it.
+Each person publishes their own panel from their own claude.ai account (KAN-395): personal claude.ai accounts cannot
+open each other's artifacts. Each viewer needs the
 AiNecto connector with its write tools (`conversation_send`, `conversation_mark_read`, `mark_notifications_read`) on
 «Always allow»: a tool that needs approval is not available to artifacts.
 
 A published panel is a copy, so it does not change when the page here does (KAN-404). The build puts the page's version
 (the first 12 hex digits of its sha256, taken before the slot goes in) in a slot and in
-`mcp-app/dist/ainecto-panel-artifact.version`, which `copy:app` takes to ainecto-api. When the panel opens it reads
+`mcp-app/dist/ainecto-panel-artifact.version`, which `copy:app` takes to ainecto-api with the page itself. When the panel opens it reads
 `open_ainecto_panel` once; when `panel.artifactVersion` differs from its own it shows «새 버전이 있습니다 · 업데이트»
 above the tabs, and «업데이트» sends Claude «[AiNecto 패널] 패널 새 버전» the way «AI에게» sends an item: Claude
-republishes the same artifact (same link, the sidebar pin stays) from the guide document (`panel.howToUpdate`). Update
-the guide's HTML document before ainecto-api names the new version, or the republish brings back the old page.
+republishes the same artifact (same link, the sidebar pin stays) with the page `open_ainecto_panel` hands out. The
+version and the page come from the same copy in ainecto-api, so they cannot disagree.
 
 ```bash
 AINECTO_PLAYWRIGHT_FROM=../ainecto-front npm run test:artifact   # the exported page in Chromium with a stand-in runtime

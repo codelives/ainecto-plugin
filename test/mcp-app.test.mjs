@@ -9,11 +9,14 @@ import {
   OUT_HTML,
   OUT_SHA,
   OUT_ARTIFACT_VERSION,
+  OUT_ARTIFACT_CAPABILITIES,
+  artifactCapabilities,
   artifactVersion,
   build,
   buildArtifact,
   bundle,
   diffAgainstDisk,
+  projectSlot,
   sha256Line,
   toArtifactPage,
   versionSlot,
@@ -21,7 +24,6 @@ import {
 import { APP_PROTOCOL_VERSION, createBridge, initializeParams } from '../mcp-app/bridge.js';
 import { PANEL_TOOLS } from '../mcp-app/panel.js';
 import { createArtifactHost, mcpError, pickConnector, roomBridge } from '../mcp-app/artifact-host.js';
-import { capabilitiesFor, exportPage } from '../scripts/export-artifact.mjs';
 import { contextForClaude, contextText, panelUpdate, POLL_MS, updateRequestForClaude } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 test('the committed panel HTML is a fresh build of its sources (npm run build:app)', () => {
@@ -424,20 +426,19 @@ test('artifact host: comments cannot send here → the same button uses room (KA
   assert.deepEqual(await host.canSendToClaude(), { ok: true, why: null });
 });
 
-test('export: fills the one project slot with a checked uuid; capabilities name the panel tools and the signal topic', () => {
+test('artifact page (KAN-406): one empty project slot in the exact form ainecto-api fills; capabilities with the connector left empty', () => {
   const html = buildArtifact().html;
-  assert.equal(html.split('<script type="application/json" id="ainecto-project">{"projectUuid":null}</script>').length, 2);
-  const out = exportPage(html, 'A8B8FEE3-05ED-4383-824D-7E59D7CF66EA');
-  assert.ok(out.includes('{"projectUuid":"a8b8fee3-05ed-4383-824d-7e59d7cf66ea"}'));
-  assert.equal(out.length - html.length, 'a8b8fee3-05ed-4383-824d-7e59d7cf66ea'.length + 2 - 'null'.length);
-  assert.throws(() => exportPage(html, '"></script><script>alert(1)'), /not an AiNecto project uuid/);
-  assert.throws(() => exportPage(out, 'a8b8fee3-05ed-4383-824d-7e59d7cf66ea'), /no single empty project slot/);
-  assert.deepEqual(capabilitiesFor('claude_ai_Ainecto_dev'), {
-    mcp: { servers: [{ server: 'claude_ai_Ainecto_dev', tools: PANEL_TOOLS }] },
+  // ainecto-api McpAppResources.EMPTY_PROJECT_SLOT is this string — it refuses to boot on a page without exactly one
+  const empty = '<script type="application/json" id="ainecto-project">{"projectUuid":null}</script>';
+  assert.equal(projectSlot(null), empty);
+  assert.equal(html.split(empty).length, 2);
+  assert.deepEqual(artifactCapabilities(), {
+    mcp: { servers: [{ server: '', tools: PANEL_TOOLS }] },
     room: { topics: { conv: 'interact' } },
     user: { scopes: ['profile'] },
     comments: { customAnchors: true },
   });
+  assert.deepEqual(JSON.parse(readFileSync(join(ROOT, OUT_ARTIFACT_CAPABILITIES), 'utf8')), artifactCapabilities());
 });
 
 test('artifact version (KAN-404): the page hash before its slot, in the page and in the file ainecto-api copies', () => {
@@ -447,8 +448,6 @@ test('artifact version (KAN-404): the page hash before its slot, in the page and
   assert.equal(html.split(slot).length, 2, 'one version slot');
   assert.equal(artifactVersion(html.replace(slot, '')), version, 'the version is the page without its slot');
   assert.equal(readFileSync(join(ROOT, OUT_ARTIFACT_VERSION), 'utf8'), version + '\n');
-  // the export fills the project, not the version
-  assert.ok(exportPage(html, 'a8b8fee3-05ed-4383-824d-7e59d7cf66ea').includes(slot));
   // any source change moves it
   assert.notEqual(artifactVersion(html.replace(slot, '').replace('<title>', '<title> ')), version);
 });
@@ -467,7 +466,7 @@ test('updateRequestForClaude: the republish request as the short panel text, not
   const text = contextText(ctx);
   assert.match(text, /^\[AiNecto 패널\] 패널 새 버전\n요청: /);
   assert.match(text, /같은 주소에 다시 게시/);
-  assert.match(text, /panel\.howToUpdate/);
+  assert.doesNotMatch(text, /howToUpdate|open_ainecto_panel/);
   assert.match(text, /abc123def456[\s\S]*0123456789ab/);
   assert.doesNotMatch(text, /^> /m);
 });
