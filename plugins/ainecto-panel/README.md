@@ -140,11 +140,14 @@ npm run export:artifact -- --project <project uuid> --out /tmp/panel.html --serv
 ```
 
 `--server` is the connector as the publishing session names it (the Artifact tool resolves it to the display name);
-the page itself names no server and takes the manifest server that lists `get_my_work_summary`. After publishing,
-register the link on the project with `update_projects` (`panelArtifactUrl`, project admins), so
-`open_ainecto_panel` hands the same link to everyone. Each viewer needs the AiNecto connector with its write tools
-(`conversation_send`, `conversation_mark_read`, `mark_notifications_read`) on «Always allow»: a tool that needs approval
-is not available to artifacts. Share the artifact with the organization as Contributor so viewers can send signals.
+the page itself names no server and takes the manifest server that lists `get_my_work_summary`. Each person publishes
+their own panel from their own claude.ai account (KAN-395): personal claude.ai accounts cannot open each other's
+artifacts, so «open the AiNecto panel» makes Claude open the one this user already published, or publish a new one from
+the AiNecto guide document «AiNecto 패널 아티팩트 만들기» (`open_ainecto_panel` → `panel.howToOpen`). A link saved on the
+project with `update_projects` (`panelArtifactUrl`) opens only for people in the same claude.ai Team/Enterprise
+organization it was shared in, and `open_ainecto_panel` only shows it with that condition. Each viewer needs the
+AiNecto connector with its write tools (`conversation_send`, `conversation_mark_read`, `mark_notifications_read`) on
+«Always allow»: a tool that needs approval is not available to artifacts.
 
 ```bash
 AINECTO_PLAYWRIGHT_FROM=../ainecto-front npm run test:artifact   # the exported page in Chromium with a stand-in runtime
