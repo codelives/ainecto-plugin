@@ -41,9 +41,9 @@ function published(body) {
 
 const playwright = await loadPlaywright();
 
-/** The exported page in a 400px Chromium page with the stand-in runtime; `problems` collects console errors. */
-async function openPanel(browser, { clock = false, canSend = 'available', comments = null } = {}) {
-  const context = await browser.newContext({ viewport: { width: WIDTH, height: 760 } });
+/** The exported page in a Chromium page (400px unless `width`) with the stand-in runtime; `problems` collects console errors. */
+async function openPanel(browser, { clock = false, canSend = 'available', comments = null, width = WIDTH } = {}) {
+  const context = await browser.newContext({ viewport: { width, height: 760 } });
   const page = await context.newPage();
   const problems = [];
   page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.text()}`));
@@ -371,6 +371,38 @@ test('artifact page: comments only for editors — writers_only falls back to ro
     assert.deepEqual(await fake(() => window.__fake.comments.sent), []);
     assert.deepEqual(await fake(() => window.__fake.sentToClaude[0].opts), { deliver: 'send' });
     assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('artifact page: content stops at 560px and centres in a wide pane, fits a 360px one with no sideways scroll (KAN-403)', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    for (const width of [1200, 360]) {
+      const { page, problems } = await openPanel(browser, { width });
+      await page.getByText('패널 1단계에 착수했습니다.').waitFor();
+      for (const tab of ['룸', '알림', '챗']) {
+        await page.locator('.tab', { hasText: tab }).click();
+        const box = await page.evaluate(() => {
+          const r = document.querySelector('.app').getBoundingClientRect();
+          return { left: r.left, right: r.right, width: r.width, page: document.documentElement.scrollWidth, view: innerWidth };
+        });
+        assert.ok(box.page <= width, `${width}px ${tab}: page is ${box.page}px wide`);
+        if (width > 560) {
+          assert.equal(box.width, 560, `${width}px ${tab}: content is ${box.width}px wide`);
+          assert.ok(Math.abs(box.left - (box.view - box.right)) <= 1, `${width}px ${tab}: not centred (${box.left} / ${box.view - box.right})`);
+        } else {
+          assert.equal(box.width, box.view, `${width}px ${tab}: content ${box.width}px, pane ${box.view}px`);
+        }
+        if (tab === '알림') {
+          const card = await page.locator('.card').first().boundingBox();
+          assert.ok(card.width <= 560, `${width}px: card is ${card.width}px wide`);
+        }
+      }
+      assert.deepEqual(problems, []);
+      await page.context().close();
+    }
   } finally {
     await browser.close();
   }
