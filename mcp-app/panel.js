@@ -749,7 +749,6 @@ function cardView(card, now) {
     actions.push(el('button', { type: 'button', className: 'ai-button', onClick: () => { tab = 'chat'; openChat = card.openChat; onConversationChange(); } }, '챗 열기'));
   } else if (card.button && canAsk) {
     actions.push(el('button', { type: 'button', className: 'ai-button', onClick: (event) => askAi(contextForClaude({ projectUuid, card }), event) }, [el('span', { 'aria-hidden': 'true' }, '✧'), card.button, el('span', { 'aria-hidden': 'true' }, '↗')]));
-    actions.push(el('div', { className: 'hint' }, '현재 AI 대화에서 이어서 검토'));
   } else if (card.button && askWhy) {
     actions.push(el('div', { className: 'hint' }, askWhy));
   }

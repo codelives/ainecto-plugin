@@ -189,6 +189,8 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     await card.getByText('Claude·Claude Code 협업 연동').waitFor();
     assert.match(await card.innerText(), /Edwin PARK님이 업무 검토를 요청했습니다\./);
     await noOverflow('alerts');
+    await card.getByRole('button', { name: /AI에게 검토 요청/ }).waitFor();
+    assert.equal(await card.locator('.hint').count(), 0, 'no hint under the button while it can send (KAN-393)');
     const listArgs = await fake(() => window.__fake.calls.find((c) => c.tool === 'list_notifications').input);
     assert.deepEqual(listArgs, { projectUuids: [PROJECT], order: 'newest', limit: 20 });
     // Where the platform cannot ask (send is claude_unavailable), the same click stages it in the composer.

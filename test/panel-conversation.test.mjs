@@ -170,7 +170,7 @@ test('alertCard: head and button per kind, label without the title, path, unread
   assert.equal(c.unread, true);
   assert.equal(alertCard(item('DOCUMENT_UPDATED', { documentChange: { changeCount: 3, versionSummary: 'v12 정리' } })).copy, 'v12 정리');
   assert.equal(alertCard(item('DOCUMENT_UPDATED')).button, 'AI에게 변경 확인 요청');
-  assert.equal(alertCard(item('COMMENT_MENTIONED')).button, 'AI에게 댓글 확인 요청');
+  assert.equal(alertCard(item('COMMENT_MENTIONED')).button, 'Claude에게 확인 요청');
   assert.equal(alertCard(item('CARD_STATUS_CHANGED', { groupCount: 3 })).copy, '3건이 한 알림으로 묶였습니다');
   assert.equal(alertCard(item('CARD_STATUS_CHANGED')).head, '업무 알림');
   const chat = alertCard(item('CONVERSATION_MESSAGE', { target: { type: 'CONVERSATION', uuid: CHAT, title: null } }));
