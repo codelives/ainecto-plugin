@@ -81,11 +81,15 @@
       const mine = store.conversations.filter((c) => !c.users || c.users.includes(ME));
       return { notice: 'Message bodies…', projectUuid, projectName: '테스트 프로젝트', conversations: mine.map(summaryOf), members: members(), memberCount: 2 };
     },
+    // As ConversationService.messages: at most 50; hasMore = older ones exist (the latest page) or newer ones exist
+    // (afterSeq).
     conversation_get_messages: ({ conversationUuid, limit = 20, afterSeq }) => {
-      let msgs = store.messages[conversationUuid] ?? [];
-      msgs = afterSeq !== undefined ? msgs.filter((m) => m.seq > afterSeq).slice(0, limit) : msgs.slice(-limit);
+      const all = store.messages[conversationUuid] ?? [];
+      const size = Math.min(limit, 50);
+      const msgs = afterSeq !== undefined ? all.filter((m) => m.seq > afterSeq).slice(0, size) : all.slice(-size);
+      const hasMore = msgs.length > 0 && (afterSeq !== undefined ? all.at(-1).seq > msgs.at(-1).seq : all[0].seq < msgs[0].seq);
       const c = store.conversations.find((x) => x.uuid === conversationUuid);
-      return { notice: '…', conversationUuid, type: c.type, projectUuid: PROJECT, messages: msgs.map((m) => message(conversationUuid, m)), hasMore: false, latestSeq: latest(conversationUuid), myLastReadSeq: store.read[conversationUuid]?.[ME] ?? 0 };
+      return { notice: '…', conversationUuid, type: c.type, projectUuid: PROJECT, messages: msgs.map((m) => message(conversationUuid, m)), hasMore, latestSeq: latest(conversationUuid), myLastReadSeq: store.read[conversationUuid]?.[ME] ?? 0 };
     },
     conversation_send: (args) => {
       if (args.clientMutationId && store.receipts[args.clientMutationId]) return store.receipts[args.clientMutationId];

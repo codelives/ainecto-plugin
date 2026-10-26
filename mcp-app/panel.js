@@ -45,11 +45,12 @@ import {
   contextForClaude,
   conversationsView,
   dayKo,
+  holeAfterFill,
+  holeAfterRead,
   initialOf,
   MESSAGE_PAGE,
   mergeMessages,
   pendingShown,
-  messageGap,
   mutationId,
   newerThanKnown,
   PANEL_TABS,
@@ -96,6 +97,8 @@ let tab = 'room';
 let openChat = null; // a chat's conversationUuid, or { userId, name } for a chat not started yet
 let messages = []; // the conversation on screen, oldest first
 let page = null; // its last conversation_get_messages answer without the messages
+let hole = null; // what of it is not read yet past the messages shown (holeAfterRead): filled page by page, never marked read
+let filling = false;
 let known = {}; // conversationUuid → highest seq this pane knows (from a read or a signal)
 let marking = {}; // conversationUuid → seq a mark_read was sent for
 let typingNames = [];
@@ -223,6 +226,7 @@ function followConversation() {
   stopMessages = null;
   messages = [];
   page = null;
+  hole = null;
   host.room?.presence({ viewing: c, typingIn: null }).catch?.(() => {});
   updateAloneReads();
   if (!c) return;
@@ -235,20 +239,34 @@ function followConversation() {
 async function useMessages(c, data, { after = false } = {}) {
   if (c !== shownConversationUuid()) return;
   const incoming = Array.isArray(data?.messages) ? data.messages : [];
-  const gap = after ? null : messageGap(messages, incoming, data?.hasMore);
+  hole = holeAfterRead(hole, c, messages, incoming, { hasMore: data?.hasMore, after });
   messages = mergeMessages(messages, incoming);
   page = { conversationUuid: c, type: data?.type, latestSeq: data?.latestSeq, myLastReadSeq: data?.myLastReadSeq };
   passOn([{ conversationUuid: c, latestSeq: data?.latestSeq }]);
   clearBanner();
   render();
-  if (gap !== null) {
-    const r = await callTool('conversation_get_messages', { conversationUuid: c, afterSeq: gap, limit: MESSAGE_PAGE });
-    if (r.ok && c === shownConversationUuid()) {
+  await fillHole(c);
+  markSeen(c);
+}
+
+/**
+ * Reads the hole of conversation `c` (see `hole`) page by page while the server says newer ones exist. A failed read
+ * leaves the hole: every later read of the conversation tries again, and nothing past it is marked read meanwhile.
+ */
+async function fillHole(c) {
+  if (filling) return;
+  filling = true;
+  try {
+    while (hole?.conversationUuid === c && c === shownConversationUuid()) {
+      const r = await callTool('conversation_get_messages', { conversationUuid: c, afterSeq: hole.after, limit: MESSAGE_PAGE });
+      if (!r.ok || hole?.conversationUuid !== c || c !== shownConversationUuid()) return;
       messages = mergeMessages(messages, r.data?.messages);
+      hole = holeAfterFill(hole, r.data?.messages, r.data?.hasMore);
       render();
     }
+  } finally {
+    filling = false;
   }
-  markSeen(c);
 }
 
 // ── Reading alone: nobody in the room will signal this pane ──
@@ -300,7 +318,7 @@ async function readAlone() {
 
 /** The viewer sees the conversation: move their read position (and the notifications it covers). */
 async function markSeen(c) {
-  const through = readThrough(page);
+  const through = readThrough(page, hole);
   if (!through || document.visibilityState === 'hidden' || (marking[c] ?? 0) >= through) return;
   marking[c] = through;
   const r = await callTool('conversation_mark_read', { conversationUuid: c, throughSeq: through });

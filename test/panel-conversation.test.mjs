@@ -14,6 +14,8 @@ import {
   contextText,
   conversationsView,
   dayKo,
+  holeAfterFill,
+  holeAfterRead,
   initialOf,
   mergeMessages,
   messageGap,
@@ -109,6 +111,32 @@ test('readThrough: the latest seq when it is past my read position', () => {
   assert.equal(readThrough({ latestSeq: 7, myLastReadSeq: 4 }), 7);
   assert.equal(readThrough({ latestSeq: 7, myLastReadSeq: 7 }), null);
   assert.equal(readThrough({ latestSeq: 0, myLastReadSeq: 0 }), null);
+});
+
+test('hole (review #15 F2): opened by a gap or a newer-than-one-page read, kept until a read says nothing newer is left', () => {
+  // seq 1·2 shown, then 120 more: the latest page is 73..122 with older ones (hasMore).
+  const latest = Array.from({ length: 50 }, (_, i) => msg(73 + i));
+  const hole = holeAfterRead(null, ROOM, [msg(1), msg(2)], latest, { hasMore: true });
+  assert.deepEqual(hole, { conversationUuid: ROOM, after: 2 });
+  assert.equal(holeAfterRead(null, ROOM, [msg(1), msg(2)], [msg(2), msg(3)], { hasMore: true }), null, 'the page overlaps: no hole');
+  assert.equal(holeAfterRead(null, ROOM, [msg(1), msg(2)], latest, { hasMore: false }), null, 'nothing older: no hole');
+  assert.equal(holeAfterRead(hole, ROOM, [msg(1), msg(2), ...latest], latest, { hasMore: true }), hole, 'an open hole stays (its oldest point)');
+  assert.deepEqual(holeAfterRead(hole, CHAT, [], [msg(9)], { hasMore: true }), null, 'another conversation: its own');
+  // A read after the last shown that says newer ones exist leaves the rest unread.
+  assert.deepEqual(holeAfterRead(null, ROOM, [msg(1)], [msg(2), msg(51)], { hasMore: true, after: true }), { conversationUuid: ROOM, after: 51 });
+  assert.equal(holeAfterRead(null, ROOM, [msg(1)], [msg(2)], { hasMore: false, after: true }), null);
+  // Filled page by page: 3..52, 53..102, 103..122 (nothing newer).
+  const one = holeAfterFill(hole, Array.from({ length: 50 }, (_, i) => msg(3 + i)), true);
+  assert.deepEqual(one, { conversationUuid: ROOM, after: 52 });
+  const two = holeAfterFill(one, Array.from({ length: 50 }, (_, i) => msg(53 + i)), true);
+  assert.deepEqual(two, { conversationUuid: ROOM, after: 102 });
+  assert.equal(holeAfterFill(two, Array.from({ length: 20 }, (_, i) => msg(103 + i)), false), null);
+  // Marked read no further than the hole, only in its own conversation.
+  const page = { conversationUuid: ROOM, latestSeq: 122, myLastReadSeq: 2 };
+  assert.equal(readThrough(page, hole), null, 'nothing past seq 2 is read yet');
+  assert.equal(readThrough(page, one), 52);
+  assert.equal(readThrough(page, null), 122);
+  assert.equal(readThrough(page, { conversationUuid: CHAT, after: 5 }), 122);
 });
 
 test('room signals carry only the conversation and the seq; anything else is dropped', () => {

@@ -182,7 +182,7 @@
 
   <div id="foot" class="foot"></div>
 </div>
-<script type="application/json" id="ainecto-project">{"projectUuid":null}</script><script type="application/json" id="ainecto-panel-version">"2a8ed4bc0a43"</script>
+<script type="application/json" id="ainecto-project">{"projectUuid":null}</script><script type="application/json" id="ainecto-panel-version">"170dfbb6a3da"</script>
 <script>
 'use strict';
 // ── plugins/ainecto-panel/hooks/inbox.js ──
@@ -610,11 +610,38 @@ function readLabel(message, type, meUserId) {
   return type === 'DIRECT' ? '읽음' : `읽음 ${n}`;
 }
 
-/** The seq to mark read up to when the viewer sees this conversation, or null when nothing new is unread. */
-function readThrough(page) {
+/**
+ * The part of the open conversation a pane has not read yet: `{ conversationUuid, after }` — the messages after seq
+ * `after` are not all read (more landed between two reads than one page holds, or a read after it said hasMore), or
+ * null. The pane reads after `after` page by page until the server says nothing newer is left (holeAfterFill), and
+ * marks read no further than `after` meanwhile (readThrough). A hole already open stays: its `after` is the oldest.
+ * `after` = the read was conversation_get_messages afterSeq (its hasMore means newer ones), else the latest page.
+ */
+function holeAfterRead(hole, conversationUuid, shown, incoming, { hasMore = false, after = false } = {}) {
+  if (hole?.conversationUuid === conversationUuid) return hole;
+  if (!after) {
+    const gap = messageGap(shown, incoming, hasMore);
+    return gap === null ? null : { conversationUuid, after: gap };
+  }
+  const last = (incoming ?? []).reduce((n, m) => Math.max(n, Number(m.seq)), 0);
+  return hasMore && last > 0 ? { conversationUuid, after: last } : null;
+}
+
+/** The hole after one more page read after hole.after: null once the server says nothing newer is left. */
+function holeAfterFill(hole, page, hasMore) {
+  const last = (page ?? []).reduce((n, m) => Math.max(n, Number(m.seq)), 0);
+  return hasMore && last > 0 ? { ...hole, after: last } : null;
+}
+
+/**
+ * The seq to mark read up to when the viewer sees this conversation, or null when nothing new is unread. Never past
+ * an open hole of it (holeAfterRead): the viewer has not seen what is in it.
+ */
+function readThrough(page, hole = null) {
   const latest = Number(page?.latestSeq ?? 0);
+  const through = hole && hole.conversationUuid === page?.conversationUuid ? Math.min(latest, Number(hole.after)) : latest;
   const mine = Number(page?.myLastReadSeq ?? 0);
-  return latest > mine ? latest : null;
+  return through > mine ? through : null;
 }
 
 /**
@@ -956,7 +983,7 @@ function initialOf(name) {
   return first ? first.toUpperCase() : '?';
 }
 
-return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
+return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, holeAfterRead, holeAfterFill, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
 })();
 
 // ── mcp-app/panel.js ──
@@ -999,7 +1026,7 @@ const __mcp_app_panel_js = (() => {
 //   conversation is on screen with unread messages), mark_notifications_read.
 // - A page that knows its version (host.connect → version) reads open_ainecto_panel once when it opens; when the
 //   server names a newer one, «새 버전이 있습니다 · 업데이트» hands the viewer's Claude the republish request.
-const { ALERT_PAGE, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, messageGap, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
+const { ALERT_PAGE, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, holeAfterFill, holeAfterRead, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
 
 /**
  * Every AiNecto tool this panel calls. A Claude artifact must name exactly these in its `mcp` manifest
@@ -1030,6 +1057,8 @@ let tab = 'room';
 let openChat = null; // a chat's conversationUuid, or { userId, name } for a chat not started yet
 let messages = []; // the conversation on screen, oldest first
 let page = null; // its last conversation_get_messages answer without the messages
+let hole = null; // what of it is not read yet past the messages shown (holeAfterRead): filled page by page, never marked read
+let filling = false;
 let known = {}; // conversationUuid → highest seq this pane knows (from a read or a signal)
 let marking = {}; // conversationUuid → seq a mark_read was sent for
 let typingNames = [];
@@ -1157,6 +1186,7 @@ function followConversation() {
   stopMessages = null;
   messages = [];
   page = null;
+  hole = null;
   host.room?.presence({ viewing: c, typingIn: null }).catch?.(() => {});
   updateAloneReads();
   if (!c) return;
@@ -1169,20 +1199,34 @@ function followConversation() {
 async function useMessages(c, data, { after = false } = {}) {
   if (c !== shownConversationUuid()) return;
   const incoming = Array.isArray(data?.messages) ? data.messages : [];
-  const gap = after ? null : messageGap(messages, incoming, data?.hasMore);
+  hole = holeAfterRead(hole, c, messages, incoming, { hasMore: data?.hasMore, after });
   messages = mergeMessages(messages, incoming);
   page = { conversationUuid: c, type: data?.type, latestSeq: data?.latestSeq, myLastReadSeq: data?.myLastReadSeq };
   passOn([{ conversationUuid: c, latestSeq: data?.latestSeq }]);
   clearBanner();
   render();
-  if (gap !== null) {
-    const r = await callTool('conversation_get_messages', { conversationUuid: c, afterSeq: gap, limit: MESSAGE_PAGE });
-    if (r.ok && c === shownConversationUuid()) {
+  await fillHole(c);
+  markSeen(c);
+}
+
+/**
+ * Reads the hole of conversation `c` (see `hole`) page by page while the server says newer ones exist. A failed read
+ * leaves the hole: every later read of the conversation tries again, and nothing past it is marked read meanwhile.
+ */
+async function fillHole(c) {
+  if (filling) return;
+  filling = true;
+  try {
+    while (hole?.conversationUuid === c && c === shownConversationUuid()) {
+      const r = await callTool('conversation_get_messages', { conversationUuid: c, afterSeq: hole.after, limit: MESSAGE_PAGE });
+      if (!r.ok || hole?.conversationUuid !== c || c !== shownConversationUuid()) return;
       messages = mergeMessages(messages, r.data?.messages);
+      hole = holeAfterFill(hole, r.data?.messages, r.data?.hasMore);
       render();
     }
+  } finally {
+    filling = false;
   }
-  markSeen(c);
 }
 
 // ── Reading alone: nobody in the room will signal this pane ──
@@ -1234,7 +1278,7 @@ async function readAlone() {
 
 /** The viewer sees the conversation: move their read position (and the notifications it covers). */
 async function markSeen(c) {
-  const through = readThrough(page);
+  const through = readThrough(page, hole);
   if (!through || document.visibilityState === 'hidden' || (marking[c] ?? 0) >= through) return;
   marking[c] = through;
   const r = await callTool('conversation_mark_read', { conversationUuid: c, throughSeq: through });

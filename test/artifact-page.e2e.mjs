@@ -469,3 +469,58 @@ test('artifact page: a newer panel — «새 버전이 있습니다 · 업데이
     await browser.close();
   }
 });
+
+// Review #15 F2: more messages than one page land between two reads of the open room. The pane reads the gap page by
+// page (hasMore) and marks read only what it read without a hole — not past a hole it failed to fill.
+test('artifact page: a burst between two reads — every message shows, read position never passes a hole (review #15 F2)', { skip: SKIP }, async () => {
+  const browser = await playwright.chromium.launch();
+  try {
+    const shownBursts = () => [...document.querySelectorAll('#timeline .bubble')].map((e) => e.textContent).filter((t) => t.startsWith('burst-'));
+    const marksSince = (from) => window.__fake.calls.slice(from).filter((c) => c.tool === 'conversation_mark_read').map((c) => c.input.throughSeq);
+    for (const n of [30, 70, 120]) {
+      const { page, problems, fake } = await openPanel(browser);
+      await page.waitForFunction(() => window.__fake.calls.some((c) => c.tool === 'conversation_mark_read'));
+      const from = await fake(() => window.__fake.calls.length);
+      await fake((count) => {
+        for (let i = 1; i <= count; i++) window.__fake.serverMessage(window.__fake.ROOM, window.__fake.EDWIN, 'burst-' + i);
+        window.__fake.tick();
+      }, n);
+      await page.waitForFunction((seq) => window.__fake.store.read[window.__fake.ROOM][window.__fake.ME] === seq, 2 + n);
+      await fake(() => window.__fake.tick());
+      await page.waitForTimeout(100);
+      const shown = await page.evaluate(shownBursts);
+      const missing = Array.from({ length: n }, (_, i) => 'burst-' + (i + 1)).filter((b) => !shown.includes(b));
+      assert.deepEqual(missing, [], `${n}: every message of the burst is shown`);
+      const marks = await page.evaluate(marksSince, from);
+      assert.ok(marks.length > 0 && marks.every((s, i) => s <= 2 + n && (i === 0 || s > marks[i - 1])), `${n}: marks ${marks}`);
+      assert.deepEqual(problems, []);
+      await page.context().close();
+    }
+
+    // The gap read fails: nothing is marked past the hole; the next read fills it, then the read position moves.
+    {
+      const { page, problems, fake } = await openPanel(browser);
+      await page.waitForFunction(() => window.__fake.calls.some((c) => c.tool === 'conversation_mark_read'));
+      const from = await fake(() => window.__fake.calls.length);
+      await fake(() => {
+        window.__fake.failReads('server_unavailable');
+        for (let i = 1; i <= 120; i++) window.__fake.serverMessage(window.__fake.ROOM, window.__fake.EDWIN, 'burst-' + i);
+        window.__fake.tick();
+      });
+      await page.waitForFunction((f) => window.__fake.calls.slice(f).some((c) => c.tool === 'conversation_get_messages' && !c.watch && c.input.afterSeq === 2), from);
+      await page.waitForTimeout(200);
+      assert.deepEqual((await page.evaluate(marksSince, from)).filter((s) => s > 2), [], 'not marked past the hole');
+      assert.equal(await fake(() => window.__fake.store.read[window.__fake.ROOM][window.__fake.ME]), 2);
+      await fake(() => {
+        window.__fake.failReads(null);
+        window.__fake.tick();
+      });
+      await page.waitForFunction(() => window.__fake.store.read[window.__fake.ROOM][window.__fake.ME] === 122);
+      assert.equal((await page.evaluate(shownBursts)).length, 120, 'the hole is filled on the next read');
+      assert.deepEqual(problems.filter((p) => !/server_unavailable/.test(p)), []);
+      await page.context().close();
+    }
+  } finally {
+    await browser.close();
+  }
+});

@@ -421,11 +421,38 @@ export function readLabel(message, type, meUserId) {
   return type === 'DIRECT' ? '읽음' : `읽음 ${n}`;
 }
 
-/** The seq to mark read up to when the viewer sees this conversation, or null when nothing new is unread. */
-export function readThrough(page) {
+/**
+ * The part of the open conversation a pane has not read yet: `{ conversationUuid, after }` — the messages after seq
+ * `after` are not all read (more landed between two reads than one page holds, or a read after it said hasMore), or
+ * null. The pane reads after `after` page by page until the server says nothing newer is left (holeAfterFill), and
+ * marks read no further than `after` meanwhile (readThrough). A hole already open stays: its `after` is the oldest.
+ * `after` = the read was conversation_get_messages afterSeq (its hasMore means newer ones), else the latest page.
+ */
+export function holeAfterRead(hole, conversationUuid, shown, incoming, { hasMore = false, after = false } = {}) {
+  if (hole?.conversationUuid === conversationUuid) return hole;
+  if (!after) {
+    const gap = messageGap(shown, incoming, hasMore);
+    return gap === null ? null : { conversationUuid, after: gap };
+  }
+  const last = (incoming ?? []).reduce((n, m) => Math.max(n, Number(m.seq)), 0);
+  return hasMore && last > 0 ? { conversationUuid, after: last } : null;
+}
+
+/** The hole after one more page read after hole.after: null once the server says nothing newer is left. */
+export function holeAfterFill(hole, page, hasMore) {
+  const last = (page ?? []).reduce((n, m) => Math.max(n, Number(m.seq)), 0);
+  return hasMore && last > 0 ? { ...hole, after: last } : null;
+}
+
+/**
+ * The seq to mark read up to when the viewer sees this conversation, or null when nothing new is unread. Never past
+ * an open hole of it (holeAfterRead): the viewer has not seen what is in it.
+ */
+export function readThrough(page, hole = null) {
   const latest = Number(page?.latestSeq ?? 0);
+  const through = hole && hole.conversationUuid === page?.conversationUuid ? Math.min(latest, Number(hole.after)) : latest;
   const mine = Number(page?.myLastReadSeq ?? 0);
-  return latest > mine ? latest : null;
+  return through > mine ? through : null;
 }
 
 /**
