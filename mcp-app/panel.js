@@ -38,6 +38,7 @@
 //   server names a newer one, «새 버전이 있습니다 · 업데이트» hands the viewer's Claude the republish request.
 import {
   ALERT_PAGE,
+  ASK_TO,
   ALONE_POLL_MS,
   aloneReadArgs,
   alertCards,
@@ -478,8 +479,8 @@ async function markAlertRead(card) {
 
 /** What the viewer reads after «AI에게», by how the host delivered it. */
 const ASKED = {
-  commented: 'Claude 에게 보냈습니다 — 답은 댓글 스레드에 옵니다',
-  sent: 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요',
+  commented: `${ASK_TO} 보냈습니다 — 답은 댓글 스레드에 옵니다`,
+  sent: `${ASK_TO} 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요`,
   staged: '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요',
 };
 
@@ -488,7 +489,7 @@ const ASK_FAILED = {
   consent_required: '처음 한 번 댓글 허용이 필요합니다 — 허용 창에서 허용한 뒤 다시 누르세요 (창을 닫았다면 패널을 새로 열고 누르세요)',
   claude_unavailable: '지금 받을 Claude 대화가 없습니다. 이 패널을 Claude 대화 옆에 열고 다시 누르세요',
   rate_limited: '너무 자주 보냈습니다. 잠시 뒤 다시 누르세요',
-  forbidden: '이 화면에서는 패널에서 AI에게 보내기(댓글)가 꺼져 있습니다',
+  forbidden: `이 화면에서는 패널에서 ${ASK_TO} 보내기(댓글)가 꺼져 있습니다`,
 };
 
 /** «AI에게»: hands the item to the viewer's own AI. Runs inside the click, before anything is awaited. */
@@ -511,7 +512,7 @@ function askAi(ctx, event) {
 }
 
 function askError(err) {
-  return ASK_FAILED[err?.code] ?? 'AI에게 보내지 못했습니다: ' + (err?.message ?? err);
+  return ASK_FAILED[err?.code] ?? `${ASK_TO} 보내지 못했습니다: ` + (err?.message ?? err);
 }
 
 async function updateCanAsk() {
@@ -718,7 +719,7 @@ function messageView(m, c, direct) {
   const mine = me && m.author?.userId === me.userId;
   const author = m.author?.displayName || '탈퇴한 사용자';
   const ask = canAsk && !mine
-    ? el('button', { type: 'button', className: 'ask-link', onClick: (event) => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } }), event) }, 'AI에게')
+    ? el('button', { type: 'button', className: 'ask-link', onClick: (event) => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } }), event) }, ASK_TO)
     : null;
   if (mine) {
     const read = readLabel(m, page?.type, me.userId);

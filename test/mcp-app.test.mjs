@@ -309,6 +309,8 @@ test('artifact host: a hidden «AI에게» says why', async () => {
     room.log.can = can;
     const r = await host.canSendToClaude();
     assert.equal(r.ok, false, String(can));
+    assert.match(r.why, /Claude에게/, 'one name on screen (KAN-406 Edwin 907)');
+    assert.doesNotMatch(r.why, /AI에게/);
     return r.why;
   };
   assert.match(await why('no_session'), /Claude 대화 옆에 열었을 때/);

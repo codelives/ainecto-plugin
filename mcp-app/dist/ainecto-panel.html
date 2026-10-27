@@ -726,8 +726,11 @@ function typingIn(peers, conversationUuid) {
 
 // ── Notification cards ──
 
+/** Who the panel hands things to, in every on-screen wording (buttons, notices, reasons) — one place (KAN-406). */
+const ASK_TO = 'Claude에게';
+
 /** The notification card's button — one wording for every kind (KAN-393). */
-const ASK_BUTTON = 'Claude에게 확인 요청';
+const ASK_BUTTON = `${ASK_TO} 확인 요청`;
 
 /** What to ask the AI about a kind of notification: the sentence for Claude. */
 const ASKS = {
@@ -991,7 +994,7 @@ function initialOf(name) {
   return first ? first.toUpperCase() : '?';
 }
 
-return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, holeAfterRead, holeAfterFill, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
+return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, holeAfterRead, holeAfterFill, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, ASK_TO, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
 })();
 
 // ── mcp-app/bridge.js ──
@@ -1140,7 +1143,7 @@ const __mcp_app_panel_js = (() => {
 //   conversation is on screen with unread messages), mark_notifications_read.
 // - A page that knows its version (host.connect → version) reads open_ainecto_panel once when it opens; when the
 //   server names a newer one, «새 버전이 있습니다 · 업데이트» hands the viewer's Claude the republish request.
-const { ALERT_PAGE, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, holeAfterFill, holeAfterRead, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
+const { ALERT_PAGE, ASK_TO, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, holeAfterFill, holeAfterRead, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
 
 /**
  * Every AiNecto tool this panel calls. A Claude artifact must name exactly these in its `mcp` manifest
@@ -1552,8 +1555,8 @@ async function markAlertRead(card) {
 
 /** What the viewer reads after «AI에게», by how the host delivered it. */
 const ASKED = {
-  commented: 'Claude 에게 보냈습니다 — 답은 댓글 스레드에 옵니다',
-  sent: 'Claude 에게 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요',
+  commented: `${ASK_TO} 보냈습니다 — 답은 댓글 스레드에 옵니다`,
+  sent: `${ASK_TO} 보냈습니다 — 확인 창이 뜨면 «보내기»를 누르고 대화를 확인하세요`,
   staged: '대화 입력창에 넣었습니다 — 덧붙일 말을 쓰고 보내세요',
 };
 
@@ -1562,7 +1565,7 @@ const ASK_FAILED = {
   consent_required: '처음 한 번 댓글 허용이 필요합니다 — 허용 창에서 허용한 뒤 다시 누르세요 (창을 닫았다면 패널을 새로 열고 누르세요)',
   claude_unavailable: '지금 받을 Claude 대화가 없습니다. 이 패널을 Claude 대화 옆에 열고 다시 누르세요',
   rate_limited: '너무 자주 보냈습니다. 잠시 뒤 다시 누르세요',
-  forbidden: '이 화면에서는 패널에서 AI에게 보내기(댓글)가 꺼져 있습니다',
+  forbidden: `이 화면에서는 패널에서 ${ASK_TO} 보내기(댓글)가 꺼져 있습니다`,
 };
 
 /** «AI에게»: hands the item to the viewer's own AI. Runs inside the click, before anything is awaited. */
@@ -1585,7 +1588,7 @@ function askAi(ctx, event) {
 }
 
 function askError(err) {
-  return ASK_FAILED[err?.code] ?? 'AI에게 보내지 못했습니다: ' + (err?.message ?? err);
+  return ASK_FAILED[err?.code] ?? `${ASK_TO} 보내지 못했습니다: ` + (err?.message ?? err);
 }
 
 async function updateCanAsk() {
@@ -1792,7 +1795,7 @@ function messageView(m, c, direct) {
   const mine = me && m.author?.userId === me.userId;
   const author = m.author?.displayName || '탈퇴한 사용자';
   const ask = canAsk && !mine
-    ? el('button', { type: 'button', className: 'ask-link', onClick: (event) => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } }), event) }, 'AI에게')
+    ? el('button', { type: 'button', className: 'ask-link', onClick: (event) => askAi(contextForClaude({ projectUuid, message: m, conversation: { conversationUuid: c?.conversationUuid, type: direct ? 'DIRECT' : 'PROJECT_ROOM', name: direct ? c?.name : conv.projectName } }), event) }, ASK_TO)
     : null;
   if (mine) {
     const read = readLabel(m, page?.type, me.userId);

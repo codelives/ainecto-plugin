@@ -531,8 +531,11 @@ export function typingIn(peers, conversationUuid) {
 
 // ── Notification cards ──
 
+/** Who the panel hands things to, in every on-screen wording (buttons, notices, reasons) — one place (KAN-406). */
+export const ASK_TO = 'Claude에게';
+
 /** The notification card's button — one wording for every kind (KAN-393). */
-const ASK_BUTTON = 'Claude에게 확인 요청';
+const ASK_BUTTON = `${ASK_TO} 확인 요청`;
 
 /** What to ask the AI about a kind of notification: the sentence for Claude. */
 const ASKS = {

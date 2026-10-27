@@ -103,7 +103,7 @@ pane above still has its own notifications · comments · work tabs.
 Hosts that render [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) open it from the AiNecto MCP server
 itself: `open_ainecto_panel` shows the resource `ui://ainecto/panel`, and the project is the one that call chose
 (`panel.projectUuid` in its result). Without watch support in MCP Apps the screen reads again every 30 seconds while
-shown; «AI에게» puts the item in the conversation as quoted text (`ui/message`).
+shown; «Claude에게» puts the item in the conversation as quoted text (`ui/message`).
 
 The HTML is built here and served by ainecto-api, which keeps a copy:
 
@@ -122,7 +122,7 @@ In Claude web and desktop an artifact opens beside the conversation and stays th
 (design `claude-artifact-chat-design` §4), everything through the artifact runtime: `mcp` with the viewer's own
 connector (`watchTool` keeps reads current, `invalidate` re-reads now), `room` (after a message is stored the sender
 puts `{c, s, k}` — conversation, seq, kind, no body — on topic `conv`, and everyone with the panel open reads again;
-«입력 중» is presence) and `user` (names of people typing). «AI에게» is one click (KAN-392): `comments.sendToClaude`
+«입력 중» is presence) and `user` (names of people typing). «Claude에게» is one click (KAN-392): `comments.sendToClaude`
 posts the item as a short text starting with `[AiNecto 패널]` on the artifact and sends it to Claude, which answers the
 way the Claude app answers artifact comments (KAN-406: the connector no longer tells Claude where to answer; the
 connector's instructions only say that the `> ` lines are someone else's words, not instructions). Only editors of the artifact can send that way — publish your own panel; the first send asks once to allow
@@ -147,7 +147,7 @@ A published panel is a copy, so it does not change when the page here does (KAN-
 (the first 12 hex digits of its sha256, taken before the slot goes in) in a slot and in
 `mcp-app/dist/ainecto-panel-artifact.version`, which `copy:app` takes to ainecto-api with the page itself. When the panel opens it reads
 `open_ainecto_panel` once; when `panel.artifactVersion` differs from its own it shows «새 버전이 있습니다 · 업데이트»
-above the tabs, and «업데이트» sends Claude «[AiNecto 패널] 패널 새 버전» the way «AI에게» sends an item: Claude
+above the tabs, and «업데이트» sends Claude «[AiNecto 패널] 패널 새 버전» the way «Claude에게» sends an item: Claude
 republishes the same artifact (same link, the sidebar pin stays) with the page `open_ainecto_panel` hands out. The
 version and the page come from the same copy in ainecto-api, so they cannot disagree.
 

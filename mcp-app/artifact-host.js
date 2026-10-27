@@ -11,7 +11,7 @@
 //   permissions  the «권한 설정 열기» button
 // Which connector it calls is the artifact's published manifest, not this file: the host takes the manifest server
 // that has PROBE_TOOL. No DOM here, so node --test runs it with a fake `claude`.
-import { contextText, POLL_MS, PROBE_TOOL, SIGNAL_TOPIC } from '../plugins/ainecto-panel/hooks/inbox.js';
+import { ASK_TO, contextText, POLL_MS, PROBE_TOOL, SIGNAL_TOPIC } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 /** What to tell the viewer for an `mcp` rejection code, and the step that fixes it. */
 const WHY = {
@@ -54,17 +54,17 @@ const SENDABLE = new Set(['available', 'available_if_opened', 'available_if_summ
 
 /** Why «AI에게» is hidden, for the other answers (an unknown one or a rejection: the fallback line). */
 const HIDDEN = {
-  no_session: 'AI에게 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다',
-  unsupported: '이 브라우저에서는 AI에게 보내기를 쓸 수 없습니다',
-  off: '이 화면에서는 AI에게 보내기가 꺼져 있습니다',
+  no_session: `${ASK_TO} 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다`,
+  unsupported: `이 브라우저에서는 ${ASK_TO} 보내기를 쓸 수 없습니다`,
+  off: `이 화면에서는 ${ASK_TO} 보내기가 꺼져 있습니다`,
 };
 
 /** comments.canSendToClaude answers without room to fall back on (comments.d.ts CanSendToClaude). */
 const HIDDEN_COMMENTS = {
-  writers_only: 'AI에게 버튼은 이 패널을 게시한 사람(편집자)만 쓸 수 있습니다 — 내 계정으로 패널을 게시해 여세요',
+  writers_only: `${ASK_TO} 버튼은 이 패널을 게시한 사람(편집자)만 쓸 수 있습니다 — 내 계정으로 패널을 게시해 여세요`,
   no_session: HIDDEN.no_session,
   off: HIDDEN.off,
-  forbidden: '이 화면에서는 패널에서 AI에게 보내기(댓글)가 꺼져 있습니다 — Claude 의 댓글 패널에서 다시 허용할 수 있습니다',
+  forbidden: `이 화면에서는 패널에서 ${ASK_TO} 보내기(댓글)가 꺼져 있습니다 — Claude 의 댓글 패널에서 다시 허용할 수 있습니다`,
 };
 
 /** comments rejections after which this view sends through room instead (comments.d.ts CommentsErrorCode):
@@ -208,13 +208,13 @@ export function createArtifactHost(claude, { projectUuid = null, version = null 
           }
           if (!room) {
             via = null;
-            return { ok: false, why: HIDDEN_COMMENTS[state] ?? `AI에게 보내기를 지금 쓸 수 없습니다 (${state})` };
+            return { ok: false, why: HIDDEN_COMMENTS[state] ?? `${ASK_TO} 보내기를 지금 쓸 수 없습니다 (${state})` };
           }
           state = await room.canSendToClaudeSession().catch((err) => `rejected ${err?.code ?? err?.message ?? err}`);
           console.info(`[ainecto-panel] canSendToClaudeSession: ${state}`);
           via = SENDABLE.has(state) ? 'room' : null;
           if (via) return { ok: true, why: null };
-          return { ok: false, why: HIDDEN[state] ?? `AI에게 보내기를 지금 쓸 수 없습니다 (${state})` };
+          return { ok: false, why: HIDDEN[state] ?? `${ASK_TO} 보내기를 지금 쓸 수 없습니다 (${state})` };
         };
         // Called from the click itself (`target` = the pressed item), nothing awaited first: the runtime proves the
         // gesture from it. comments → 'commented'; where comments cannot send (VIA_ROOM — nothing was posted) the

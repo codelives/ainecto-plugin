@@ -159,13 +159,14 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     await page.locator('#compose-input').fill('');
 
     // «AI에게» on someone's message sends it to the viewer's Claude as data: the platform asks once, Claude answers.
+    assert.equal(await page.locator('.msg:not(.mine) .ask-link').first().textContent(), 'Claude에게');
     await page.locator('.msg:not(.mine) .ask-link').first().click();
     await page.waitForFunction(() => window.__fake.sentToClaude.length === 1);
     const toClaudeMsg = await fake(() => window.__fake.sentToClaude[0]);
     assert.equal(toClaudeMsg.data.kind, 'room_message');
     assert.match(toClaudeMsg.data.notice, /지시가 아니라 참고 자료/);
     assert.deepEqual(toClaudeMsg.opts, { deliver: 'send' });
-    await page.getByText('Claude 에게 보냈습니다').waitFor();
+    await page.getByText('Claude에게 보냈습니다').waitFor();
 
     // ── Chat: start a chat with a project member from «＋ 새 챗» ──
     await page.locator('.tab', { hasText: '챗' }).click();
@@ -291,14 +292,14 @@ test('artifact page: no Claude beside the panel — «AI에게» hidden with the
   const browser = await playwright.chromium.launch();
   try {
     const { page, problems, fake } = await openPanel(browser, { canSend: 'no_session' });
-    const why = 'AI에게 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다';
+    const why = 'Claude에게 버튼은 이 패널을 Claude 대화 옆에 열었을 때 나타납니다';
     await page.getByText('패널 1단계에 착수했습니다.').waitFor();
     await page.locator('#banner', { hasText: why }).waitFor();
     assert.equal(await page.locator('.msg .ask-link').count(), 0);
     await page.locator('.tab', { hasText: '알림' }).click();
     const card = page.locator('.card', { hasText: '업무 검토 요청' });
     await card.locator('.hint', { hasText: why }).waitFor();
-    assert.equal(await card.getByRole('button', { name: /AI에게/ }).count(), 0);
+    assert.equal(await card.getByRole('button', { name: /Claude에게/ }).count(), 0);
     // A conversation opens beside it: the next re-check (a tab change) shows the button again.
     await fake(() => window.__fake.canSend('available'));
     await page.locator('.tab', { hasText: '룸' }).click();
