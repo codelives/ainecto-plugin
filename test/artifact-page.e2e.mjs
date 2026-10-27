@@ -185,20 +185,20 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     await page.locator('#conv-head .back').click();
     await page.locator('#chat-rows .row', { hasText: 'Edwin PARK' }).waitFor();
 
-    // ── Alerts: the project's notifications as cards; «AI에게 검토 요청» → sendToClaudeSession ──
+    // ── Alerts: the project's notifications as cards; «Claude에게 확인 요청» → sendToClaudeSession ──
     await page.locator('.tab', { hasText: '알림' }).click();
     await page.getByText('미확인 2').waitFor();
     const card = page.locator('.card', { hasText: '업무 검토 요청' });
     await card.getByText('Claude·Claude Code 협업 연동').waitFor();
     assert.match(await card.innerText(), /Edwin PARK님이 업무 검토를 요청했습니다\./);
     await noOverflow('alerts');
-    await card.getByRole('button', { name: /AI에게 검토 요청/ }).waitFor();
+    await card.getByRole('button', { name: /Claude에게 확인 요청/ }).waitFor();
     assert.equal(await card.locator('.hint').count(), 0, 'no hint under the button while it can send (KAN-393)');
     const listArgs = await fake(() => window.__fake.calls.find((c) => c.tool === 'list_notifications').input);
     assert.deepEqual(listArgs, { projectUuids: [PROJECT], order: 'newest', limit: 20 });
     // Where the platform cannot ask (send is claude_unavailable), the same click stages it in the composer.
     await fake(() => window.__fake.refuseSend('claude_unavailable'));
-    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await card.getByRole('button', { name: /Claude에게 확인 요청/ }).click();
     await page.waitForFunction(() => window.__fake.sentToClaude.length === 2);
     assert.deepEqual(await fake(() => window.__fake.refusedToClaude.map((r) => r.opts)), [{ deliver: 'send' }]);
     assert.deepEqual(await fake(() => window.__fake.sentToClaude[1].opts), { deliver: 'stage' });
@@ -211,7 +211,7 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     await page.getByText('대화 입력창에 넣었습니다').waitFor();
 
     // «확인» marks the card read and the count follows.
-    await card.getByRole('button', { name: '확인' }).click();
+    await card.getByRole('button', { name: '확인', exact: true }).click();
     await page.getByText('미확인 1').waitFor();
 
     // The panel never acknowledged or moved the agent's notification position.
@@ -303,7 +303,7 @@ test('artifact page: no Claude beside the panel — «AI에게» hidden with the
     await fake(() => window.__fake.canSend('available'));
     await page.locator('.tab', { hasText: '룸' }).click();
     await page.locator('.tab', { hasText: '알림' }).click();
-    await card.getByRole('button', { name: /AI에게 검토 요청/ }).waitFor();
+    await card.getByRole('button', { name: /Claude에게 확인 요청/ }).waitFor();
     assert.equal(await card.locator('.hint', { hasText: why }).count(), 0);
     assert.deepEqual(problems, []);
   } finally {
@@ -335,7 +335,7 @@ test('artifact page: comments can send — «AI에게» is one sendToClaude, wor
     await page.locator('#comment-mode', { hasText: '댓글 모드가 켜져 있습니다' }).waitFor();
     await page.locator('.tab', { hasText: '알림' }).click();
     const card = page.locator('.card', { hasText: '업무 검토 요청' });
-    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await card.getByRole('button', { name: /Claude에게 확인 요청/ }).click();
     await page.waitForFunction(() => window.__fake.comments.sent.length === 2);
     const second = await fake(() => window.__fake.comments.sent[1]);
     assert.match(second.text, /^\[AiNecto 패널\] 업무 검토 요청 — Claude·Claude Code 협업 연동\n/);
@@ -348,13 +348,13 @@ test('artifact page: comments can send — «AI에게» is one sendToClaude, wor
 
     // consent_required: nothing sent through room, the viewer is told what to do.
     await fake(() => window.__fake.refuseComment('consent_required'));
-    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await card.getByRole('button', { name: /Claude에게 확인 요청/ }).click();
     await page.getByText('처음 한 번 댓글 허용이 필요합니다').waitFor();
     assert.deepEqual(await fake(() => window.__fake.sentToClaude), []);
 
     // claude_unavailable (nothing posted): the same click falls back to room's send (KAN-388).
     await fake(() => window.__fake.refuseComment('claude_unavailable'));
-    await card.getByRole('button', { name: /AI에게 검토 요청/ }).click();
+    await card.getByRole('button', { name: /Claude에게 확인 요청/ }).click();
     await page.waitForFunction(() => window.__fake.sentToClaude.length === 1);
     assert.deepEqual(await fake(() => window.__fake.sentToClaude[0].opts), { deliver: 'send' });
     await page.getByText('확인 창이 뜨면').waitFor();

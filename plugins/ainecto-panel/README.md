@@ -97,7 +97,7 @@ npm run test:panel   # the mod itself, with `claude plugin test` (no session, no
 
 The MCP App and the Claude artifact below share one screen (`mcp-app/panel.js`) and the data rules in
 `hooks/inbox.js`: **one AiNecto project** in three tabs — **룸** (the project room), **챗** (direct chats with the
-project's members, «＋ 새 챗»), **알림** (that project's notifications as cards, «AI에게 검토 요청»). The Claude Code
+project's members, «＋ 새 챗»), **알림** (that project's notifications as cards, «Claude에게 확인 요청»). The Claude Code
 pane above still has its own notifications · comments · work tabs.
 
 Hosts that render [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) open it from the AiNecto MCP server

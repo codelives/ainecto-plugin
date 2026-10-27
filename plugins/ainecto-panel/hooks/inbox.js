@@ -531,13 +531,16 @@ export function typingIn(peers, conversationUuid) {
 
 // ── Notification cards ──
 
-/** What to ask the AI about a kind of notification: the button and the sentence for Claude. */
+/** The notification card's button — one wording for every kind (KAN-393). */
+const ASK_BUTTON = 'Claude에게 확인 요청';
+
+/** What to ask the AI about a kind of notification: the sentence for Claude. */
 const ASKS = {
-  review: { button: 'AI에게 검토 요청', label: '검토 요청', ask: '원문(카드·문서)과 댓글을 읽고 검토 의견을 정리해 주세요.' },
-  change: { button: 'AI에게 변경 확인 요청', label: '변경 확인 요청', ask: '구독한 문서의 원문을 읽고 무엇이 바뀌었는지 정리해 주세요.' },
-  comment: { button: 'Claude에게 확인 요청', label: '댓글 확인 요청', ask: '원문과 댓글을 읽고 어떻게 답할지 제안해 주세요.' },
-  work: { button: 'AI에게 확인 요청', label: '확인 요청', ask: '이 알림의 원문을 읽고 무엇을 하면 되는지 정리해 주세요.' },
-  message: { button: 'AI에게 보내기', label: '메시지', ask: '이 메시지를 살펴보고, 필요하면 원문 대화를 읽은 뒤 어떻게 답할지 제안해 주세요.' },
+  review: { ask: '원문(카드·문서)과 댓글을 읽고 검토 의견을 정리해 주세요.' },
+  change: { ask: '구독한 문서의 원문을 읽고 무엇이 바뀌었는지 정리해 주세요.' },
+  comment: { ask: '원문과 댓글을 읽고 어떻게 답할지 제안해 주세요.' },
+  work: { ask: '이 알림의 원문을 읽고 무엇을 하면 되는지 정리해 주세요.' },
+  message: { ask: '이 메시지를 살펴보고, 필요하면 원문 대화를 읽은 뒤 어떻게 답할지 제안해 주세요.' },
 };
 
 /** Card head per notification kind; kinds not named here fall back by family (CARD_ → work item). */
@@ -574,7 +577,6 @@ export function alertCard(item) {
     : Number(item.groupCount ?? 1) > 1
       ? `${Number(item.groupCount)}건이 한 알림으로 묶였습니다`
       : '';
-  const ask = askKey ? ASKS[askKey] : null;
   return {
     key: `n-${item.id}`,
     id: item.id,
@@ -590,7 +592,7 @@ export function alertCard(item) {
     url: item.target?.url ?? null,
     unread: !item.humanRead,
     ask: askKey,
-    button: ask?.button ?? null,
+    button: askKey ? ASK_BUTTON : null,
     openChat: kind === 'CONVERSATION_MESSAGE' && item.target?.uuid ? String(item.target.uuid) : null,
     item,
   };
