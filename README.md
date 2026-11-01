@@ -25,6 +25,7 @@ permissions — the server refuses the rest.
 ## Install
 
 After installing, sign in to AiNecto in the browser the first time the agent connects.
+Connecting from ChatGPT, Claude or another app without the plugin: see https://ainecto.com/docs/get-started/connect-your-agent/
 
 ### Claude Code
 
