@@ -1,49 +1,114 @@
 {
   "source": "AiNecto MCP tools/list (https://ainecto.com/mcp)",
-  "capturedAt": "2026-10-23",
+  "capturedAt": "2026-11-02",
   "tools": [
+    {
+      "name": "conversation_get_messages",
+      "args": [
+        "conversationUuid",
+        "limit",
+        "afterSeq",
+        "beforeSeq"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "conversation_list",
+      "args": [
+        "projectUuid",
+        "withUserId"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "conversation_mark_read",
+      "args": [
+        "conversationUuid",
+        "throughSeq",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "conversation_send",
+      "args": [
+        "conversationUuid",
+        "to",
+        "body",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
     {
       "name": "create_comments",
       "args": [
         "documentUuid",
         "cardUuid",
         "items",
-        "mailLanguage"
+        "mailLanguage",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
+      "name": "create_document_images",
+      "args": [
+        "documentUuids",
+        "theme"
+      ],
+      "readOnly": true
+    },
+    {
       "name": "create_documents",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "create_folders",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "create_project_from_template",
+      "args": [
+        "workspaceUuid",
+        "templateKey",
+        "name",
+        "excludeItemKeys",
+        "projectKey",
+        "description",
+        "language",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "create_projects",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "create_workspaces",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "delete_attachments",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -52,37 +117,61 @@
       "args": [
         "documentUuid",
         "cardUuid",
-        "ids"
+        "ids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "delete_documents",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "delete_folders",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "delete_projects",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "delete_workspaces",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
+    },
+    {
+      "name": "design_apply_changes",
+      "args": [
+        "documentUuid",
+        "baseRevision",
+        "operations",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "design_get_boards",
+      "args": [
+        "documentUuid",
+        "boardIds",
+        "versionNumber"
+      ],
+      "readOnly": true
     },
     {
       "name": "diagram_apply_changes",
@@ -91,7 +180,8 @@
         "description",
         "nodes",
         "edges",
-        "groups"
+        "groups",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -150,7 +240,8 @@
         "inputTokens",
         "cachedInputTokens",
         "outputTokens",
-        "creditsCharged"
+        "creditsCharged",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -159,7 +250,8 @@
       "args": [
         "uuid",
         "status",
-        "errorMessage"
+        "errorMessage",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -167,7 +259,17 @@
       "name": "disable_shares",
       "args": [
         "targetType",
-        "targetUuids"
+        "targetUuids",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "document_relations",
+      "args": [
+        "documentUuid",
+        "operations",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -175,7 +277,8 @@
       "name": "enable_shares",
       "args": [
         "targetType",
-        "targetUuids"
+        "targetUuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -185,7 +288,8 @@
         "documentUuid",
         "description",
         "operations",
-        "arrangeNewTables"
+        "arrangeNewTables",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -193,7 +297,8 @@
       "name": "erd_arrange_tables",
       "args": [
         "documentUuid",
-        "full"
+        "full",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -258,6 +363,22 @@
       "readOnly": true
     },
     {
+      "name": "favorite_documents",
+      "args": [
+        "uuids",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "finish_documents",
+      "args": [
+        "items",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
       "name": "get_attachment",
       "args": [
         "uuid"
@@ -276,7 +397,8 @@
       "args": [
         "workspaceUuids",
         "projectUuids",
-        "projectUuid"
+        "projectUuid",
+        "agent"
       ],
       "readOnly": true
     },
@@ -317,7 +439,20 @@
       "args": [
         "code",
         "title",
-        "areas"
+        "areas",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "invite_project_members",
+      "args": [
+        "projectUuid",
+        "email",
+        "userId",
+        "role",
+        "orgUuid",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -326,7 +461,8 @@
       "args": [
         "boardUuid",
         "operations",
-        "mailLanguage"
+        "mailLanguage",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -337,10 +473,13 @@
         "action",
         "reason",
         "assigneeUserId",
+        "assigneeAgentUuid",
         "responderIds",
         "requesterUserId",
         "expectedRevision",
-        "mailLanguage"
+        "documentVersions",
+        "mailLanguage",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -349,6 +488,9 @@
       "args": [
         "boardUuid",
         "status",
+        "q",
+        "assigneeUserId",
+        "agentUuid",
         "cardUuids",
         "cardKeys",
         "relation",
@@ -367,8 +509,16 @@
         "workspaceUuids",
         "projectUuids",
         "projectUuid",
+        "agent",
         "after",
         "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_agents",
+      "args": [
+        "includeArchived"
       ],
       "readOnly": true
     },
@@ -396,6 +546,11 @@
         "q",
         "limit"
       ],
+      "readOnly": true
+    },
+    {
+      "name": "list_favorite_documents",
+      "args": [],
       "readOnly": true
     },
     {
@@ -455,8 +610,19 @@
         "workspaceUuids",
         "projectUuids",
         "projectUuid",
+        "agent",
         "directOnly",
-        "limit"
+        "limit",
+        "order"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_project_templates",
+      "args": [
+        "templateKey",
+        "excludeItemKeys",
+        "language"
       ],
       "readOnly": true
     },
@@ -465,6 +631,14 @@
       "args": [
         "workspaceUuid",
         "q",
+        "limit"
+      ],
+      "readOnly": true
+    },
+    {
+      "name": "list_subscribed_documents",
+      "args": [
+        "cursor",
         "limit"
       ],
       "readOnly": true
@@ -489,21 +663,24 @@
     {
       "name": "mark_notifications_read",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "markdown_append_document",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "markdown_generate_document",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -518,16 +695,26 @@
     {
       "name": "move_folders",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "move_projects",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
+    },
+    {
+      "name": "open_ainecto_panel",
+      "args": [
+        "projectUuid",
+        "artifactPage"
+      ],
+      "readOnly": true
     },
     {
       "name": "request_upload_token",
@@ -535,7 +722,8 @@
         "purpose",
         "scopeJson",
         "maxBytes",
-        "ttlSeconds"
+        "ttlSeconds",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -544,14 +732,16 @@
       "args": [
         "documentUuid",
         "cardUuid",
-        "ids"
+        "ids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "restore_versions",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -574,37 +764,74 @@
       "readOnly": true
     },
     {
+      "name": "subscribe_documents",
+      "args": [
+        "uuids",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
       "name": "unarchive_documents",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "unarchive_folders",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "unarchive_projects",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "unarchive_workspaces",
       "args": [
-        "uuids"
+        "uuids",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "unfavorite_documents",
+      "args": [
+        "uuids",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "unsubscribe_documents",
+      "args": [
+        "uuids",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "update_agent_todos",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_agents",
+      "args": [
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
@@ -614,42 +841,48 @@
         "documentUuid",
         "cardUuid",
         "items",
-        "mailLanguage"
+        "mailLanguage",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "update_documents",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "update_folders",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "update_projects",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "update_workspaces",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     },
     {
       "name": "upload_attachments",
       "args": [
-        "items"
+        "items",
+        "clientMutationId"
       ],
       "readOnly": false
     }

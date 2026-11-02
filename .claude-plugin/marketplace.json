@@ -4,12 +4,12 @@
     "name": "Codelive, Inc.",
     "email": "contact@codelive.co.kr"
   },
-  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
+  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams, design mockups and boards.",
   "plugins": [
     {
       "name": "ainecto",
       "source": "./",
-      "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
+      "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams, design mockups and boards.",
       "version": "0.1.0"
     }
   ]

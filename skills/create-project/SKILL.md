@@ -1,6 +1,6 @@
 ---
 name: create-project
-description: Set up new work in AiNecto — a workspace or project, its folders, and the first documents such as a design doc and a kanban board. Use when the user asks to create, start or set up a new AiNecto project or workspace, or to lay out folders and starter documents in one.
+description: Set up new work in AiNecto — a workspace or project, its folders, and the first documents such as a spec doc and a kanban board. Use when the user asks to create, start or set up a new AiNecto project or workspace, or to lay out folders and starter documents in one.
 ---
 
 # Create a project
@@ -36,7 +36,9 @@ duplicates.
    them with `parentFolderUuid`.
 6. **Create starter documents:** `create_documents(items)` with the `projectUuid` (not a workspace
    uuid), an optional `folderUuid`, a `type` and a `title`. A Markdown document takes its body in
-   `typePayload`; `type: "kanban"` creates an empty board — add cards with the manage-kanban skill.
+   `typePayload`; `type: "kanban"` creates an empty board — add cards with the manage-kanban skill;
+   `type: "design"` creates an empty canvas with one page — add pages and mockups (self-contained HTML
+   pages) with `design_apply_changes`, passing the `revision` from `get_document` as `baseRevision`.
    If the result has a `DUPLICATE_TITLE` warning, a document with the same title already sits in that
    place (`duplicateOf`): tell the user and ask whether to delete one.
 7. **Adjust:** rename a project or change its description with `update_projects(items)` (needs admin
@@ -47,7 +49,7 @@ duplicates.
 
 | Read | Write (after the user confirms the plan) |
 |---|---|
-| `list_workspaces` · `get_workspace` · `list_projects` · `get_project` · `list_folders` · `identity_get_self` | `create_workspaces` · `create_projects` · `create_folders` · `create_documents` · `update_projects` |
+| `list_workspaces` · `get_workspace` · `list_projects` · `get_project` · `list_folders` · `get_document` · `identity_get_self` | `create_workspaces` · `create_projects` · `create_folders` · `create_documents` · `design_apply_changes` · `update_projects` |
 
 ## Cautions
 

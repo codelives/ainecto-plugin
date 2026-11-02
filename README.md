@@ -1,9 +1,9 @@
 # AiNecto plugin
 
 [AiNecto](https://ainecto.com) is shared project memory for people and AI agents: workspaces,
-documents, ERDs, diagrams and kanban boards. This plugin connects your AI agent to the AiNecto MCP
-server (`https://ainecto.com/mcp`, sign-in with your AiNecto account over OAuth) and adds five skills
-that tell the agent how to use it well.
+documents, ERDs, diagrams, design mockups and kanban boards. This plugin connects your AI agent to the
+AiNecto MCP server (`https://ainecto.com/mcp`, sign-in with your AiNecto account over OAuth) and adds
+skills that tell the agent how to use it well.
 
 One source, five platforms: Claude (Claude Code, claude.ai, Cowork), OpenAI Codex, ChatGPT, Cursor
 and Gemini CLI.
@@ -25,6 +25,7 @@ permissions — the server refuses the rest.
 ## Install
 
 After installing, sign in to AiNecto in the browser the first time the agent connects.
+Connecting from ChatGPT, Claude or another app without the plugin: see https://ainecto.com/docs/get-started/connect-your-agent/
 
 ### Claude Code
 
@@ -92,7 +93,7 @@ handles that data under the privacy policy above.
 ```text
 plugin-src/listing.json            the single source of every listing value (name, description, URLs, icon, MCP address, version)
 plugin-src/tools-snapshot.json     the AiNecto MCP tool names and arguments the skills may mention
-skills/<name>/SKILL.md             the five skills (Agent Skills format), shared by every platform
+skills/<name>/SKILL.md             the skills (Agent Skills format), shared by every platform
 assets/icon.png                    512×512 icon
 plugin.json, mcp.json              generated — Agent Plugins 1.0 (Codex, ChatGPT, Cursor)
 .agents/plugins/marketplace.json   generated — Codex marketplace
