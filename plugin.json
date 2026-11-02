@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "ainecto",
   "version": "0.1.0",
-  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams and boards.",
+  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams, design mockups and boards.",
   "author": {
     "name": "Codelive, Inc.",
     "email": "contact@codelive.co.kr",
@@ -26,7 +26,7 @@
       "interface": {
         "displayName": "AiNecto",
         "shortDescription": "Shared project memory for AI",
-        "longDescription": "AiNecto is shared project memory for people and AI agents. Your agent can see what is waiting for you (notifications, to-dos and assigned kanban cards), find and review documents with comments, run kanban cards through their workflow, set up workspaces and projects, and write status reports — all against the same workspaces, documents, ERDs, diagrams and boards your team uses on ainecto.com. Sign in once with your AiNecto account; what the agent may change is decided by your AiNecto permissions.",
+        "longDescription": "AiNecto is shared project memory for people and AI agents. Your agent can see what is waiting for you (notifications, to-dos and assigned kanban cards), find and review documents with comments, run kanban cards through their workflow, set up workspaces and projects, and write status reports — all against the same workspaces, documents, ERDs, diagrams, design mockups and boards your team uses on ainecto.com. Sign in once with your AiNecto account; what the agent may change is decided by your AiNecto permissions.",
         "developerName": "Codelive, Inc.",
         "category": "Productivity",
         "capabilities": [
