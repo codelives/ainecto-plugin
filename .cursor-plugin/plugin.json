@@ -1,0 +1,25 @@
+{
+  "name": "ainecto",
+  "displayName": "AiNecto",
+  "version": "0.2.1",
+  "description": "Shared project memory for people and AI agents: documents, ERD, diagrams, boards, design mockups.",
+  "author": {
+    "name": "Codelive, Inc.",
+    "email": "contact@codelive.co.kr",
+    "url": "https://ainecto.com"
+  },
+  "homepage": "https://ainecto.com/en/?utm_source=cursor&utm_medium=referral&utm_campaign=agent-directory",
+  "repository": "https://github.com/codelives/ainecto-plugin",
+  "license": "MIT",
+  "keywords": [
+    "ainecto",
+    "mcp",
+    "project-memory",
+    "documents",
+    "kanban",
+    "erd",
+    "diagrams",
+    "collaboration"
+  ],
+  "logo": "./assets/icon.png"
+}

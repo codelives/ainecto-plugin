@@ -19,6 +19,7 @@ test('the generator covers exactly the committed manifest set', () => {
     '.agents/plugins/marketplace.json',
     '.claude-plugin/marketplace.json',
     '.claude-plugin/plugin.json',
+    '.cursor-plugin/plugin.json',
     '.mcp.json',
     'gemini-extension.json',
     'mcp.json',
@@ -63,6 +64,43 @@ test('directory homepage links carry the guide UTM (KAN-212)', () => {
   assert.equal(agentPlugins.homepage, expected('chatgpt'));
   assert.equal(agentPlugins.extensions['com.openai'].interface.websiteURL, expected('chatgpt'));
   assert.equal(read('.claude-plugin/plugin.json').homepage, expected('claude'));
+  assert.equal(read('.cursor-plugin/plugin.json').homepage, expected('cursor'));
+});
+
+test('each platform reads its own inflow source (KAN-713: Cursor is not counted as Claude)', () => {
+  const sourceOf = (rel) => new URL(read(rel).homepage).searchParams.get('utm_source');
+  assert.deepEqual(
+    {
+      claude: sourceOf('.claude-plugin/plugin.json'),
+      codexAndChatgpt: sourceOf('plugin.json'),
+      cursor: sourceOf('.cursor-plugin/plugin.json'),
+    },
+    { claude: 'claude', codexAndChatgpt: 'chatgpt', cursor: 'cursor' },
+  );
+  assert.equal(read('gemini-extension.json').homepage, undefined, 'Gemini extensions have no homepage field');
+});
+
+test('Cursor manifest has the identity Cursor shows and leaves skills and MCP to its defaults', () => {
+  const c = read('.cursor-plugin/plugin.json');
+  assert.equal(c.name, listing.name);
+  assert.equal(c.version, listing.version);
+  assert.equal(c.description, listing.description);
+  assert.equal(c.repository, listing.repository);
+  assert.ok(existsSync(join(ROOT, c.logo)));
+  for (const k of ['skills', 'mcpServers']) assert.equal(c[k], undefined, `${k}: Cursor finds skills/ and .mcp.json itself`);
+});
+
+test('license is MIT everywhere and LICENSE holds the MIT text (KAN-713)', () => {
+  assert.equal(listing.license, 'MIT');
+  for (const rel of ['plugin.json', '.claude-plugin/plugin.json', '.cursor-plugin/plugin.json']) {
+    assert.equal(read(rel).license, 'MIT', rel);
+  }
+  const pkg = read('package.json');
+  assert.equal(pkg.license, listing.license, 'package.json license follows listing.json');
+  assert.equal(pkg.version, listing.version, 'package.json version follows listing.json');
+  const text = readFileSync(join(ROOT, 'LICENSE'), 'utf8');
+  assert.match(text, /^MIT License\n\nCopyright \(c\) \d{4} Codelive, Inc\.\n/);
+  assert.ok(text.includes('Permission is hereby granted, free of charge'));
 });
 
 test('icon is a square PNG of at least 512px inside the plugin', () => {

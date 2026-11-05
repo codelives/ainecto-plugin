@@ -36,7 +36,7 @@ export function renderManifests(l) {
   const server = l.mcp.serverName;
 
   return {
-    // Agent Plugins 1.0 (Codex, ChatGPT, Cursor and other Agent Plugins clients)
+    // Agent Plugins 1.0 (Codex, ChatGPT and other Agent Plugins clients)
     'plugin.json': {
       $schema: `${AGENT_PLUGINS}/plugin.schema.json`,
       name: l.name,
@@ -109,7 +109,21 @@ export function renderManifests(l) {
     '.mcp.json': {
       mcpServers: { [server]: { type: 'http', url: l.mcp.url } },
     },
-    // Gemini CLI
+    // Cursor — its loader reads .cursor-plugin/ before .claude-plugin/ and plugin.json, so without this
+    // file Cursor shows the Claude homepage link. Skills and .mcp.json are found by Cursor's defaults.
+    '.cursor-plugin/plugin.json': {
+      name: l.name,
+      displayName: l.displayName,
+      version: l.version,
+      description: l.description,
+      author,
+      homepage: inflowUrl(l, 'cursor'),
+      repository: l.repository,
+      license: l.license,
+      keywords: l.keywords,
+      logo: l.icon,
+    },
+    // Gemini CLI (gemini-extension.json has no homepage field, so it carries no inflow link)
     'gemini-extension.json': {
       name: l.name,
       version: l.version,

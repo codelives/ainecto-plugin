@@ -1,7 +1,7 @@
 {
   "name": "ainecto",
   "displayName": "AiNecto",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Shared project memory for people and AI agents: documents, ERD, diagrams, boards, design mockups.",
   "shortDescription": "Shared project memory for AI",
   "longDescription": "AiNecto is shared project memory for people and AI agents. Your agent can see what is waiting for you (notifications, to-dos and assigned kanban cards), find and review documents with comments, run kanban cards through their workflow, set up workspaces and projects, and write status reports — all against the same workspaces, documents, ERDs, diagrams, design mockups and boards your team uses on ainecto.com. Sign in once with your AiNecto account; what the agent may change is decided by your AiNecto permissions.",
@@ -14,10 +14,10 @@
   "inflow": {
     "medium": "referral",
     "campaign": "agent-directory",
-    "source": { "agentPlugins": "chatgpt", "claude": "claude" }
+    "source": { "agentPlugins": "chatgpt", "claude": "claude", "cursor": "cursor" }
   },
   "repository": "https://github.com/codelives/ainecto-plugin",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "keywords": ["ainecto", "mcp", "project-memory", "documents", "kanban", "erd", "diagrams", "collaboration"],
   "category": "Productivity",
   "capabilities": ["Read", "Write"],

@@ -95,11 +95,12 @@ plugin-src/listing.json            the single source of every listing value (nam
 plugin-src/tools-snapshot.json     the AiNecto MCP tool names and arguments the skills may mention
 skills/<name>/SKILL.md             the skills (Agent Skills format), shared by every platform
 assets/icon.png                    512×512 icon
-plugin.json, mcp.json              generated — Agent Plugins 1.0 (Codex, ChatGPT, Cursor)
+plugin.json, mcp.json              generated — Agent Plugins 1.0 (Codex, ChatGPT)
 .agents/plugins/marketplace.json   generated — Codex marketplace
 .claude-plugin/plugin.json         generated — Claude
 .claude-plugin/marketplace.json    generated — Claude marketplace
-.mcp.json                          generated — Claude
+.mcp.json                          generated — Claude (Cursor reads it too)
+.cursor-plugin/plugin.json         generated — Cursor (read before .claude-plugin/ and plugin.json)
 gemini-extension.json              generated — Gemini CLI
 scripts/build-plugin.mjs           the generator
 schemas/agent-plugins-1.0.0/       the official Agent Plugins schemas, vendored for the tests
@@ -130,4 +131,4 @@ Claude's own validator: `claude plugin validate .claude-plugin/plugin.json --str
 
 ## License
 
-UNLICENSED — Copyright © 2026 Codelive, Inc. All rights reserved.
+[MIT](LICENSE) — Copyright (c) 2026 Codelive, Inc.
