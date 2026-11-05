@@ -1,6 +1,6 @@
 {
   "source": "AiNecto MCP tools/list (https://ainecto.com/mcp)",
-  "capturedAt": "2026-11-02",
+  "capturedAt": "2026-11-05",
   "tools": [
     {
       "name": "conversation_get_messages",
@@ -538,6 +538,14 @@
       "readOnly": true
     },
     {
+      "name": "list_document_relations",
+      "args": [
+        "documentUuid",
+        "trackedByCursor"
+      ],
+      "readOnly": true
+    },
+    {
       "name": "list_documents",
       "args": [
         "projectUuid",
@@ -728,6 +736,15 @@
       "readOnly": false
     },
     {
+      "name": "resend_project_invitation",
+      "args": [
+        "projectUuid",
+        "email",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
       "name": "resolve_comments",
       "args": [
         "documentUuid",
@@ -858,6 +875,17 @@
       "name": "update_folders",
       "args": [
         "items",
+        "clientMutationId"
+      ],
+      "readOnly": false
+    },
+    {
+      "name": "update_project_members",
+      "args": [
+        "projectUuid",
+        "email",
+        "userId",
+        "role",
         "clientMutationId"
       ],
       "readOnly": false

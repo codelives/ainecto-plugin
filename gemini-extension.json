@@ -1,7 +1,7 @@
 {
   "name": "ainecto",
-  "version": "0.1.0",
-  "description": "Shared project memory for people and AI agents: workspaces, documents, ERD, diagrams, design mockups and boards.",
+  "version": "0.2.0",
+  "description": "Shared project memory for people and AI agents: documents, ERD, diagrams, boards, design mockups.",
   "mcpServers": {
     "ainecto": {
       "httpUrl": "https://ainecto.com/mcp"

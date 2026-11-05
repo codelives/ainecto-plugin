@@ -49,6 +49,7 @@ test('listing values satisfy platform limits', () => {
   assert.ok([...listing.displayName].length <= 30, 'OpenAI display name: 30 characters');
   assert.ok([...listing.shortDescription].length <= 30, 'OpenAI short description: 30 characters');
   assert.ok([...listing.longDescription].length <= 4000, 'OpenAI long description: 4,000 characters');
+  assert.ok([...listing.description].length <= 100, 'MCP Registry description: 100 characters (the same sentence is used there)');
   assert.ok([...listing.developer.name].length <= 80, 'OpenAI developer name: 80 characters');
   for (const [key, url] of Object.entries(listing.urls)) assert.ok(isHttps(url), `urls.${key} must be https`);
   assert.ok(isHttps(listing.mcp.url));
