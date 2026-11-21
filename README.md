@@ -92,7 +92,7 @@ handles that data under the privacy policy above.
 
 ```text
 plugin-src/listing.json            the single source of every listing value (name, description, URLs, icon, MCP address, version)
-plugin-src/tools-snapshot.json     the AiNecto MCP tool names and arguments the skills may mention
+plugin-src/tools-snapshot.json     the AiNecto operation names and arguments the skills may mention (run through search → execute_*)
 skills/<name>/SKILL.md             the skills (Agent Skills format), shared by every platform
 assets/icon.png                    512×512 icon
 plugin.json, mcp.json              generated — Agent Plugins 1.0 (Codex, ChatGPT)
@@ -118,9 +118,12 @@ npm test           # build --check, manifest schema checks, and skill checks
 Never edit a generated manifest by hand: change `plugin-src/listing.json` and run `npm run build`.
 `npm test` fails when a committed manifest differs from what the generator produces.
 
-The skill checks fail when a skill names a tool, or a tool argument, that the AiNecto server does not
-have. A tool reference is a backticked snake_case name, optionally with arguments:
-`kanban_list_cards(boardUuid, status)`. To refresh the tool list:
+The skill checks fail when a skill names an operation, or an operation argument, that the AiNecto server does
+not have. A reference is a backticked snake_case name, optionally with arguments:
+`kanban_list_cards(boardUuid, status)`. The snapshot lists AiNecto **operations** (108), which the skills run
+through `search` → `execute_*`. Since 2026-11-21 the server's `tools/list` holds only the 8 public tools, so do
+**not** refresh the snapshot with the command below until it is changed to read the operations (their names and
+input arguments) instead — refreshing from `tools list` now would leave 8 entries and fail every skill check:
 
 ```bash
 npx -y ainecto@latest tools list --json > tools.json

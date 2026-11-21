@@ -13,6 +13,13 @@ Collect the facts from AiNecto and turn them into a short, sourced status report
 - "Where are we on the launch board?"
 - "Give me standup notes from yesterday's activity."
 
+## How to call
+
+The names below are AiNecto operations, not tools of their own. Your AiNecto tool list shows `search`, the
+`execute_*` tools and `open_ainecto_panel`: give `search` the exact operation name to get its details, then call
+the `execute_*` tool those details name with `{"operation": "<name>", "args": {…}}` — for example `get_document(uuid)`
+runs as `{"operation": "get_document", "args": {"uuid": "…"}}`. Calling an operation name directly is refused.
+
 ## Steps
 
 1. **Fix the scope.** Which project or board, and which period. If the user did not say, ask once or

@@ -1,6 +1,6 @@
 {
   "name": "ainecto",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Shared project memory for people and AI agents: documents, ERD, diagrams, boards, design mockups.",
   "mcpServers": {
     "ainecto": {

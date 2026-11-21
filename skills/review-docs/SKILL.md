@@ -14,6 +14,13 @@ comments — without changing the document itself unless the user asks.
 - "What changed in the onboarding spec since last week?"
 - "Find Mina's ERD document and ask about the orders table."
 
+## How to call
+
+The names below are AiNecto operations, not tools of their own. Your AiNecto tool list shows `search`, the
+`execute_*` tools and `open_ainecto_panel`: give `search` the exact operation name to get its details, then call
+the `execute_*` tool those details name with `{"operation": "<name>", "args": {…}}` — for example `get_document(uuid)`
+runs as `{"operation": "get_document", "args": {"uuid": "…"}}`. Calling an operation name directly is refused.
+
 ## Steps
 
 1. **Find the document.**

@@ -1,7 +1,7 @@
 {
   "name": "ainecto",
   "displayName": "AiNecto",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Shared project memory for people and AI agents: documents, ERD, diagrams, boards, design mockups.",
   "shortDescription": "Shared project memory for AI",
   "longDescription": "AiNecto is shared project memory for people and AI agents. Your agent can see what is waiting for you (notifications, to-dos and assigned kanban cards), find and review documents with comments, run kanban cards through their workflow, set up workspaces and projects, and write status reports — all against the same workspaces, documents, ERDs, diagrams, design mockups and boards your team uses on ainecto.com. Sign in once with your AiNecto account; what the agent may change is decided by your AiNecto permissions.",

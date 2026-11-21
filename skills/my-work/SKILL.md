@@ -12,6 +12,13 @@ See everything that is waiting for the signed-in AiNecto user in one pass, then 
 - The user asks what is new, what to do next, or whether anyone asked them something in AiNecto.
 - The user asks for a quick catch-up, for example at the start of a work session.
 
+## How to call
+
+The names below are AiNecto operations, not tools of their own. Your AiNecto tool list shows `search`, the
+`execute_*` tools and `open_ainecto_panel`: give `search` the exact operation name to get its details, then call
+the `execute_*` tool those details name with `{"operation": "<name>", "args": {…}}` — for example `get_document(uuid)`
+runs as `{"operation": "get_document", "args": {"uuid": "…"}}`. Calling an operation name directly is refused.
+
 ## Steps
 
 1. **Summarize.** Call `get_my_work_summary`. When the user names a project, or the project you are
