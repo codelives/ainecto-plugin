@@ -22,7 +22,8 @@ import {
   versionSlot,
 } from '../scripts/build-mcp-app.mjs';
 import { APP_PROTOCOL_VERSION, createBridge, initializeParams } from '../mcp-app/bridge.js';
-import { PANEL_OPERATIONS, PANEL_TOOLS, wireCall } from '../mcp-app/panel.js';
+import { PANEL_OPERATIONS, PANEL_TOOLS } from '../mcp-app/panel.js';
+import { OPERATION_TOOLS, wireCall } from '../plugins/ainecto-panel/hooks/inbox.js';
 import { createArtifactHost, mcpError, pickConnector, roomBridge } from '../mcp-app/artifact-host.js';
 import { contextForClaude, contextText, panelUpdate, POLL_MS, updateRequestForClaude } from '../plugins/ainecto-panel/hooks/inbox.js';
 
@@ -102,8 +103,18 @@ test('ui/initialize params follow McpUiInitializeRequest', () => {
 test('PANEL_OPERATIONS names exactly the operations panel.js calls; PANEL_TOOLS is what goes on the wire (the artifact manifest is built from it)', () => {
   const source = readFileSync(join(ROOT, 'mcp-app/panel.js'), 'utf8');
   const called = [...new Set([...source.matchAll(/(?:callTool|subscribe)\('([a-z_]+)'/g)].map((m) => m[1]))].sort();
-  assert.deepEqual(Object.keys(PANEL_OPERATIONS).sort(), called);
+  assert.deepEqual([...PANEL_OPERATIONS].sort(), called);
   assert.deepEqual([...PANEL_TOOLS].sort(), ['execute_collaborate', 'execute_edit', 'execute_read', 'open_ainecto_panel']);
+});
+
+test('OPERATION_TOOLS covers exactly the operations both panes call (panel.js and the Claude Code pane)', () => {
+  const panel = readFileSync(join(ROOT, 'mcp-app/panel.js'), 'utf8');
+  const pane = readFileSync(join(ROOT, 'plugins/ainecto-panel/hooks/register.js'), 'utf8');
+  const called = new Set([
+    ...[...panel.matchAll(/(?:callTool|subscribe)\('([a-z_]+)'/g)].map((m) => m[1]),
+    ...[...pane.matchAll(/callTool\(\$, '([a-z_]+)'/g)].map((m) => m[1]),
+  ]);
+  assert.deepEqual(Object.keys(OPERATION_TOOLS).sort(), [...called].sort());
 });
 
 test('wireCall: an operation goes through its execute_* tool as {operation, args}; open_ainecto_panel keeps its own name', () => {
@@ -112,6 +123,35 @@ test('wireCall: an operation goes through its execute_* tool as {operation, args
   assert.deepEqual(wireCall('identity_get_self'), { name: 'execute_read', args: { operation: 'identity_get_self', args: {} } });
   assert.deepEqual(wireCall('open_ainecto_panel', { projectUuid: 'p' }), { name: 'open_ainecto_panel', args: { projectUuid: 'p' } });
   assert.throws(() => wireCall('delete_documents', {}), /not declared/);
+});
+
+/** The server's public tool list after MCP 7 — what a real AiNecto connector lists. */
+const PUBLIC_TOOLS = ['search', 'execute_read', 'execute_edit', 'execute_collaborate', 'execute_replace_remove',
+  'execute_access', 'execute_publish', 'open_ainecto_panel'];
+
+test('artifact host on the public tool list: connects to AiNecto and the first summary arrives through execute_read', async () => {
+  const calls = [];
+  const mcp = {
+    listTools: async () => ({ servers: [
+      { server: 'Slack', authStatus: 'connected', tools: [{ name: 'search' }] },
+      { server: 'AiNecto', authStatus: 'connected', tools: PUBLIC_TOOLS.map((name) => ({ name })) },
+    ] }),
+    callTool: async (server, tool, input) => {
+      calls.push([server, tool, input]);
+      // the server refuses an old operation name as a tool of its own
+      if (!PUBLIC_TOOLS.includes(tool)) throw Object.assign(new Error('TOOL_RENAMED'), { code: -32602 });
+      return input?.operation === 'get_my_work_summary' ? SUMMARY : { content: [], isError: true };
+    },
+  };
+  const host = createArtifactHost(fakeClaude({ mcp }));
+  assert.deepEqual(await host.connect(), { name: 'Claude 아티팩트 · AiNecto', projectUuid: null, version: null });
+  const wire = wireCall('get_my_work_summary', {});
+  assert.deepEqual(await host.callTool(wire.name, wire.args), SUMMARY);
+  assert.deepEqual(calls, [['AiNecto', 'execute_read', { operation: 'get_my_work_summary', args: {} }]]);
+  // only the artifact's allowed four (the published manifest) still identify the server
+  const four = { ...mcp, listTools: async () => ({ servers: [{ server: 'AiNecto', authStatus: 'connected',
+    tools: PANEL_TOOLS.map((name) => ({ name })) }] }) };
+  assert.equal((await createArtifactHost(fakeClaude({ mcp: four })).connect()).name, 'Claude 아티팩트 · AiNecto');
 });
 
 test('the artifact page is a page body with the same data rules, no MCP Apps bridge and no network', () => {
@@ -138,9 +178,9 @@ test('toArtifactPage keeps title, extra metas, style and the body; drops the ske
 const SUMMARY = { content: [{ type: 'text', text: '{"notifications":{"unread":0}}' }] };
 const LISTED = {
   servers: [
-    { server: 'artifacts_data', kind: 'artifact', authStatus: 'connected', tools: [{ name: 'get_my_work_summary' }] },
+    { server: 'artifacts_data', kind: 'artifact', authStatus: 'connected', tools: [{ name: 'open_ainecto_panel' }] },
     { server: 'Slack', authStatus: 'connected', tools: [{ name: 'search' }] },
-    { server: 'AiNecto dev', authStatus: 'unknown', tools: [{ name: 'get_my_work_summary' }, { name: 'list_notifications' }] },
+    { server: 'AiNecto dev', authStatus: 'unknown', tools: [{ name: 'execute_read' }, { name: 'open_ainecto_panel' }] },
   ],
 };
 

@@ -67,26 +67,27 @@ import {
   typingIn,
   updateRequestForClaude,
   whenKo,
+  wireCall,
 } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 /**
- * Every AiNecto operation this panel calls → the public tool it runs through (MCP 7: the server lists only search, the six
- * execute_* tools and open_ainecto_panel). null = called by its own name (open_ainecto_panel stays a public tool so the
- * host can show this panel). The server's table (ainecto-api mcp/operation-executors.json) is the source of truth;
- * ainecto-api's McpAppResourcesTest checks this literal against it, and test/mcp-app.test.mjs checks the keys against the
- * calls below.
+ * Every AiNecto operation this panel calls (test/mcp-app.test.mjs checks the list against the calls below). Which public
+ * tool each one runs through is OPERATION_TOOLS (inbox.js, shared with the Claude Code pane).
  */
-export const PANEL_OPERATIONS = {"identity_get_self":"execute_read","conversation_list":"execute_read","conversation_get_messages":"execute_read","conversation_send":"execute_collaborate","conversation_mark_read":"execute_collaborate","get_my_work_summary":"execute_read","list_notifications":"execute_edit","mark_notifications_read":"execute_edit","open_ainecto_panel":null};
+export const PANEL_OPERATIONS = [
+  'identity_get_self',
+  'conversation_list',
+  'conversation_get_messages',
+  'conversation_send',
+  'conversation_mark_read',
+  'get_my_work_summary',
+  'list_notifications',
+  'mark_notifications_read',
+  'open_ainecto_panel',
+];
 
 /** The public tools this panel sends on the wire. A Claude artifact must name exactly these in its `mcp` manifest. */
-export const PANEL_TOOLS = [...new Set(Object.entries(PANEL_OPERATIONS).map(([operation, tool]) => tool ?? operation))];
-
-/** Pure: an operation call → what goes on the wire ({ name, args }) — execute_* carry { operation, args }. */
-export function wireCall(operation, args) {
-  const tool = PANEL_OPERATIONS[operation];
-  if (tool === undefined) throw new Error(`panel operation not declared in PANEL_OPERATIONS: ${operation}`);
-  return tool === null ? { name: operation, args: args ?? {} } : { name: tool, args: { operation, args: args ?? {} } };
-}
+export const PANEL_TOOLS = [...new Set(PANEL_OPERATIONS.map((operation) => wireCall(operation).name))];
 
 // ── State. Lost when the host tears the panel down; the next open reads the server again. ──
 let host = null;

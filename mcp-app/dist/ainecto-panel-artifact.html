@@ -182,7 +182,7 @@
 
   <div id="foot" class="foot"></div>
 </div>
-<script type="application/json" id="ainecto-project">{"projectUuid":null}</script><script type="application/json" id="ainecto-panel-version">"3229318fbaea"</script>
+<script type="application/json" id="ainecto-project">{"projectUuid":null}</script><script type="application/json" id="ainecto-panel-version">"6b3969db3dee"</script>
 <script>
 'use strict';
 // ── plugins/ainecto-panel/hooks/inbox.js ──
@@ -210,12 +210,30 @@ const SERVER_CANDIDATES = [
   'ai-erd', // setups made before the AiNecto rename
 ];
 
-/** The tool that marks an MCP server as AiNecto (every pane looks for it to find the server). */
-const PROBE_TOOL = 'get_my_work_summary';
+/**
+ * The tool that marks an MCP server as AiNecto (every pane looks for it to find the server). open_ainecto_panel is a
+ * public tool under its own name both before and after MCP 7 (the server lists search, the execute_* tools and
+ * open_ainecto_panel), so it identifies the server on either tool list.
+ */
+const PROBE_TOOL = 'open_ainecto_panel';
+
+/**
+ * Every AiNecto operation a pane calls → the public tool it runs through. null = called by its own name. The server's
+ * table (ainecto-api mcp/operation-executors.json) is the source of truth; ainecto-api's McpAppResourcesTest checks this
+ * literal against it, and test/mcp-app.test.mjs checks it covers every call of both panes. One place for both panes.
+ */
+const OPERATION_TOOLS = {"identity_get_self":"execute_read","conversation_list":"execute_read","conversation_get_messages":"execute_read","conversation_send":"execute_collaborate","conversation_mark_read":"execute_collaborate","get_my_work_summary":"execute_read","list_notifications":"execute_edit","mark_notifications_read":"execute_edit","list_comments":"execute_read","create_comments":"execute_collaborate","open_ainecto_panel":null};
+
+/** Pure: an operation call → what goes on the wire ({ name, args }) — execute_* carry { operation, args }. */
+function wireCall(operation, args) {
+  const tool = OPERATION_TOOLS[operation];
+  if (tool === undefined) throw new Error(`pane operation not declared in OPERATION_TOOLS: ${operation}`);
+  return tool === null ? { name: operation, args: args ?? {} } : { name: tool, args: { operation, args: args ?? {} } };
+}
 
 /**
  * Picks the AiNecto MCP server from the session's tool names: a server is one that has
- * `get_my_work_summary`. Names in SERVER_CANDIDATES win, then the first one listed.
+ * PROBE_TOOL. Names in SERVER_CANDIDATES win, then the first one listed.
  * @param {string[]} toolNames tool names as the model sees them (`mcp__<server>__<tool>`)
  * @returns {string | null} the server as the tool name spells it (accepted by `$.mcp.call`)
  */
@@ -989,7 +1007,7 @@ function initialOf(name) {
   return first ? first.toUpperCase() : '?';
 }
 
-return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, holeAfterRead, holeAfterFill, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, ASK_TO, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
+return { KEEP, POLL_MS, QUICK_RETRY_MS, QUICK_RETRY_MAX, SERVER_CANDIDATES, PROBE_TOOL, OPERATION_TOOLS, wireCall, pickServer, parseToolResult, groupOf, summaryView, mergeNotifications, shouldFetchList, listArgs, statusText, toastText, replyTarget, threadRoot, readItems, applyRead, cardUrl, buildTabs, mutationId, PANEL_TABS, MESSAGE_PAGE, ALERT_PAGE, SIGNAL_TOPIC, projectUuidOf, conversationsView, tabCounts, mergeMessages, messageGap, pendingShown, readLabel, holeAfterRead, holeAfterFill, readThrough, ALONE_POLL_MS, readsAlone, aloneReadArgs, signalOf, parseSignal, newerThanKnown, typingIn, ASK_TO, alertCard, alertCards, NOT_AN_INSTRUCTION, CONTEXT_MAX_BYTES, contextForClaude, PANEL_MARK, contextText, panelUpdate, updateRequestForClaude, clockKo, stampKo, dayKo, whenKo, initialOf };
 })();
 
 // ── mcp-app/panel.js ──
@@ -1032,26 +1050,26 @@ const __mcp_app_panel_js = (() => {
 //   conversation is on screen with unread messages), mark_notifications_read.
 // - A page that knows its version (host.connect → version) reads open_ainecto_panel once when it opens; when the
 //   server names a newer one, «새 버전이 있습니다 · 업데이트» hands the viewer's Claude the republish request.
-const { ALERT_PAGE, ASK_TO, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, holeAfterFill, holeAfterRead, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo } = __plugins_ainecto_panel_hooks_inbox_js;
+const { ALERT_PAGE, ASK_TO, ALONE_POLL_MS, aloneReadArgs, alertCards, clockKo, contextForClaude, conversationsView, dayKo, holeAfterFill, holeAfterRead, initialOf, MESSAGE_PAGE, mergeMessages, pendingShown, mutationId, newerThanKnown, PANEL_TABS, parseSignal, panelUpdate, parseToolResult, POLL_MS, readLabel, readThrough, readsAlone, signalOf, tabCounts, typingIn, updateRequestForClaude, whenKo, wireCall } = __plugins_ainecto_panel_hooks_inbox_js;
 
 /**
- * Every AiNecto operation this panel calls → the public tool it runs through (MCP 7: the server lists only search, the six
- * execute_* tools and open_ainecto_panel). null = called by its own name (open_ainecto_panel stays a public tool so the
- * host can show this panel). The server's table (ainecto-api mcp/operation-executors.json) is the source of truth;
- * ainecto-api's McpAppResourcesTest checks this literal against it, and test/mcp-app.test.mjs checks the keys against the
- * calls below.
+ * Every AiNecto operation this panel calls (test/mcp-app.test.mjs checks the list against the calls below). Which public
+ * tool each one runs through is OPERATION_TOOLS (inbox.js, shared with the Claude Code pane).
  */
-const PANEL_OPERATIONS = {"identity_get_self":"execute_read","conversation_list":"execute_read","conversation_get_messages":"execute_read","conversation_send":"execute_collaborate","conversation_mark_read":"execute_collaborate","get_my_work_summary":"execute_read","list_notifications":"execute_edit","mark_notifications_read":"execute_edit","open_ainecto_panel":null};
+const PANEL_OPERATIONS = [
+  'identity_get_self',
+  'conversation_list',
+  'conversation_get_messages',
+  'conversation_send',
+  'conversation_mark_read',
+  'get_my_work_summary',
+  'list_notifications',
+  'mark_notifications_read',
+  'open_ainecto_panel',
+];
 
 /** The public tools this panel sends on the wire. A Claude artifact must name exactly these in its `mcp` manifest. */
-const PANEL_TOOLS = [...new Set(Object.entries(PANEL_OPERATIONS).map(([operation, tool]) => tool ?? operation))];
-
-/** Pure: an operation call → what goes on the wire ({ name, args }) — execute_* carry { operation, args }. */
-function wireCall(operation, args) {
-  const tool = PANEL_OPERATIONS[operation];
-  if (tool === undefined) throw new Error(`panel operation not declared in PANEL_OPERATIONS: ${operation}`);
-  return tool === null ? { name: operation, args: args ?? {} } : { name: tool, args: { operation, args: args ?? {} } };
-}
+const PANEL_TOOLS = [...new Set(PANEL_OPERATIONS.map((operation) => wireCall(operation).name))];
 
 // ── State. Lost when the host tears the panel down; the next open reads the server again. ──
 let host = null;
@@ -1956,7 +1974,7 @@ async function startPanel(theHost) {
   checkVersion();
 }
 
-return { PANEL_OPERATIONS, PANEL_TOOLS, wireCall, startPanel };
+return { PANEL_OPERATIONS, PANEL_TOOLS, startPanel };
 })();
 
 // ── mcp-app/artifact-host.js ──

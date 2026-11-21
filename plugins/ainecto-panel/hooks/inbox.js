@@ -21,12 +21,30 @@ export const SERVER_CANDIDATES = [
   'ai-erd', // setups made before the AiNecto rename
 ];
 
-/** The tool that marks an MCP server as AiNecto (every pane looks for it to find the server). */
-export const PROBE_TOOL = 'get_my_work_summary';
+/**
+ * The tool that marks an MCP server as AiNecto (every pane looks for it to find the server). open_ainecto_panel is a
+ * public tool under its own name both before and after MCP 7 (the server lists search, the execute_* tools and
+ * open_ainecto_panel), so it identifies the server on either tool list.
+ */
+export const PROBE_TOOL = 'open_ainecto_panel';
+
+/**
+ * Every AiNecto operation a pane calls → the public tool it runs through. null = called by its own name. The server's
+ * table (ainecto-api mcp/operation-executors.json) is the source of truth; ainecto-api's McpAppResourcesTest checks this
+ * literal against it, and test/mcp-app.test.mjs checks it covers every call of both panes. One place for both panes.
+ */
+export const OPERATION_TOOLS = {"identity_get_self":"execute_read","conversation_list":"execute_read","conversation_get_messages":"execute_read","conversation_send":"execute_collaborate","conversation_mark_read":"execute_collaborate","get_my_work_summary":"execute_read","list_notifications":"execute_edit","mark_notifications_read":"execute_edit","list_comments":"execute_read","create_comments":"execute_collaborate","open_ainecto_panel":null};
+
+/** Pure: an operation call → what goes on the wire ({ name, args }) — execute_* carry { operation, args }. */
+export function wireCall(operation, args) {
+  const tool = OPERATION_TOOLS[operation];
+  if (tool === undefined) throw new Error(`pane operation not declared in OPERATION_TOOLS: ${operation}`);
+  return tool === null ? { name: operation, args: args ?? {} } : { name: tool, args: { operation, args: args ?? {} } };
+}
 
 /**
  * Picks the AiNecto MCP server from the session's tool names: a server is one that has
- * `get_my_work_summary`. Names in SERVER_CANDIDATES win, then the first one listed.
+ * PROBE_TOOL. Names in SERVER_CANDIDATES win, then the first one listed.
  * @param {string[]} toolNames tool names as the model sees them (`mcp__<server>__<tool>`)
  * @returns {string | null} the server as the tool name spells it (accepted by `$.mcp.call`)
  */

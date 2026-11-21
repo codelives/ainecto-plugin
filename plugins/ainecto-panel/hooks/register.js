@@ -26,6 +26,7 @@ import {
   summaryView,
   threadRoot,
   toastText,
+  wireCall,
 } from './inbox.js'
 
 const PANE = 'ainecto'
@@ -61,7 +62,9 @@ async function callTool($, tool, args) {
   $.ui.log(`ainecto → #${id} ${server} ${tool} args=${Object.keys(args ?? {}).join(',')}`, { to: 'debug' })
   let parsed
   try {
-    parsed = parseToolResult(await $.mcp.call(server, tool, args))
+    // MCP 7: an operation goes through its public tool (execute_* {operation, args}) — one place, OPERATION_TOOLS
+    const wire = wireCall(tool, args)
+    parsed = parseToolResult(await $.mcp.call(server, wire.name, wire.args))
   } catch (err) {
     parsed = { ok: false, error: String(err?.message ?? err) }
   }

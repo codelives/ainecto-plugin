@@ -76,14 +76,14 @@ const SUMMARY = {
   },
 };
 
-test('pickServer: finds the server that has get_my_work_summary, preferring known names', () => {
-  assert.equal(pickServer(['Read', 'mcp__ai-erd__get_my_work_summary', 'mcp__ai-erd__list_notifications']), 'ai-erd');
+test('pickServer: finds the server that has open_ainecto_panel (on the public tool list), preferring known names', () => {
+  assert.equal(pickServer(['Read', 'mcp__ai-erd__execute_read', 'mcp__ai-erd__open_ainecto_panel']), 'ai-erd');
   assert.equal(
-    pickServer(['mcp__claude_ai_AiNecto__get_my_work_summary', 'mcp__ainecto__get_my_work_summary']),
+    pickServer(['mcp__claude_ai_AiNecto__open_ainecto_panel', 'mcp__ainecto__open_ainecto_panel']),
     'ainecto',
   );
-  assert.equal(pickServer(['mcp__claude_ai_AiNecto__get_my_work_summary']), 'claude_ai_AiNecto');
-  assert.equal(pickServer(['mcp__other__list_notifications', 'Bash']), null);
+  assert.equal(pickServer(['mcp__claude_ai_AiNecto__open_ainecto_panel']), 'claude_ai_AiNecto');
+  assert.equal(pickServer(['mcp__other__execute_read', 'mcp__other__get_my_work_summary', 'Bash']), null);
 });
 
 test('parseToolResult: reads the JSON block, skips hint lines, reports errors', () => {

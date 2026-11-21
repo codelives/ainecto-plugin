@@ -62,25 +62,36 @@ const PANE = {
 } as const
 
 // Shared stubs. `state.unread` drives the summary; `state.list` answers list_notifications.
-function stubs(on: any, state: { unread: number; list: (args: any) => unknown }) {
+const PUBLIC_TOOLS = ['search', 'execute_read', 'execute_edit', 'execute_collaborate', 'execute_replace_remove',
+  'execute_access', 'execute_publish', 'open_ainecto_panel']
+
+/** What the session lists after MCP 7: the server's eight public tools (no operation names). */
+const PUBLIC_TOOL_LIST = [
+  { name: 'Read', description: '', mcp: false },
+  ...PUBLIC_TOOLS.map((t) => ({ name: 'mcp__ai-erd__' + t, description: '', mcp: true })),
+]
+
+function stubs(on: any, state: { unread: number; list: (args: any) => unknown; toolList?: unknown[]; saved?: Record<string, unknown> }) {
   const calls: Call[] = []
+  const wires: string[] = []
   const toasts: string[] = []
   const opened: any[] = []
-  const saved = new Map<string, unknown>()
+  const saved = new Map<string, unknown>(Object.entries(state.saved ?? {}))
   const clock = mock.clock(on, { now: 1_000_000 })
   on('store.get', ($: any, e: any) => ({ value: saved.get(e.key) }))
   on('store.set', ($: any, e: any) => {
     saved.set(e.key, e.value)
     return { value: undefined }
   })
-  on('tool.list', () => ({
-    value: [
-      { name: 'Read', description: '', mcp: false },
-      { name: 'mcp__ai-erd__get_my_work_summary', description: '', mcp: true },
-    ],
-  }))
+  on('tool.list', () => ({ value: state.toolList ?? PUBLIC_TOOL_LIST }))
   on('mcp.call', ($: any, e: any) => {
+    // The server's public surface (MCP 7): operations come in as execute_* {operation, args}; an old operation name
+    // called as a tool of its own is refused. Recorded as the operation that ran, plus the tool it came through.
+    if (!PUBLIC_TOOLS.includes(e.tool)) return { deny: 'TOOL_RENAMED ' + e.tool }
+    const wrapped = e.tool.startsWith('execute_')
+    e = wrapped ? { ...e, tool: e.args.operation, args: e.args.args } : e
     calls.push({ server: e.server, tool: e.tool, args: e.args })
+    wires.push(wrapped ? 'via' : 'own')
     if (e.tool === 'get_my_work_summary') return { value: res(summary(state.unread)) }
     if (e.tool === 'list_notifications') return { value: res(state.list(e.args)) }
     if (e.tool === 'mark_notifications_read') {
@@ -111,7 +122,7 @@ function stubs(on: any, state: { unread: number; list: (args: any) => unknown })
   })
   on('command.register', () => ({ value: undefined }))
   on('session.start', () => ({ cwd: '/work' }))
-  return { calls, toasts, opened, saved, clock }
+  return { calls, wires, toasts, opened, saved, clock }
 }
 
 const listCalls = (calls: Call[]) => calls.filter((c) => c.tool === 'list_notifications')
@@ -183,6 +194,29 @@ test('the pane shows the numbers, marks one read, and replies under the thread r
   expect(await ui.find({ type: 'Text', text: /수락 대기 1/ })).toBeDefined()
 })
 
+test('a server saved before MCP 7 (none listed now): the first summary and a reply both go through execute_*', async ($, on) => {
+  const state = {
+    unread: 1,
+    list: () => ({ items: [note('a', 10)], nextCursor: 'tok1', hasMore: false }),
+    toolList: [{ name: 'Read', description: '', mcp: false }],
+    saved: { server: 'ai-erd' },
+  }
+  const s = stubs(on, state)
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
+  await s.clock.advance(1)
+
+  expect(s.calls[0]).toEqual({ server: 'ai-erd', tool: 'get_my_work_summary', args: {} })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /안 읽음 1/ })).toBeDefined()
+  await ui.press({ key: 'tab-comments' })
+  await ui.press({ key: 'reply-n-a' })
+  await ui.input({ key: 'reply-input', text: '확인' })
+  expect(s.calls.find((c) => c.tool === 'create_comments')?.args).toMatchObject({ items: [{ body: '확인', parentCommentId: 603 }] })
+  expect(s.toasts).toContain('AiNecto · 답글을 달았습니다')
+  // every call went through an execute_* tool — none by an old operation name
+  expect(s.wires.every((w) => w === 'via')).toBe(true)
+})
+
 test('/ainecto opens the pane with focus; a session start opens it without', async ($, on) => {
   const s = stubs(on, { unread: 0, list: () => ({ items: [], nextCursor: 't', hasMore: false }) })
   await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' })
@@ -216,12 +250,13 @@ test('a server that connects after the session starts is picked up within second
   on('store.get', () => ({ value: undefined }))
   on('store.set', () => ({ value: undefined }))
   on('tool.list', () => ({
-    value: connected ? [{ name: 'mcp__ai-erd__get_my_work_summary', description: '', mcp: true }] : [],
+    value: connected ? PUBLIC_TOOL_LIST : [],
   }))
   on('mcp.call', ($: any, e: any) => {
-    calls.push(`${e.server} ${e.tool}`)
+    const op = e.tool.startsWith('execute_') ? e.args.operation : e.tool
+    calls.push(`${e.server} ${op}`)
     if (!connected) return { deny: 'no connected MCP tool' }
-    if (e.tool === 'get_my_work_summary') return { value: res(summary(5)) }
+    if (op === 'get_my_work_summary') return { value: res(summary(5)) }
     return { value: res({ items: [], nextCursor: 't', hasMore: false }) }
   })
   on('ui.open', () => ({ value: { isPlaced: true } }))
@@ -243,7 +278,7 @@ test('a server that is listed but refuses the call shows which server and why, n
   const clock = mock.clock(on, { now: 0 })
   on('store.get', () => ({ value: undefined }))
   on('store.set', () => ({ value: undefined }))
-  on('tool.list', () => ({ value: [{ name: 'mcp__ai-erd__get_my_work_summary', description: '', mcp: true }] }))
+  on('tool.list', () => ({ value: PUBLIC_TOOL_LIST }))
   on('mcp.call', () => ({ deny: 'refused by the host' }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('ui.status', () => ({ value: undefined }))

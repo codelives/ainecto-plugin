@@ -157,7 +157,8 @@
   }
 
   const mcp = Object.freeze({
-    listTools: async () => ({ servers: [{ server: 'AiNecto dev', authStatus: 'connected', tools: Object.keys(tools).map((name) => ({ name, description: '' })) }] }),
+    // the server's public tool list after MCP 7 — operations run through execute_* (unwrap below)
+    listTools: async () => ({ servers: [{ server: 'AiNecto dev', authStatus: 'connected', tools: ['search', 'execute_read', 'execute_edit', 'execute_collaborate', 'execute_replace_remove', 'execute_access', 'execute_publish', 'open_ainecto_panel'].map((name) => ({ name, description: '' })) }] }),
     callTool: async (server, tool, input, opts) => {
       [tool, input] = unwrap(tool, input);
       calls.push({ tool, input, opts: opts ?? null, at: Date.now() });
