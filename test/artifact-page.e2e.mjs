@@ -80,9 +80,11 @@ test('artifact page: room send → signal → re-read, a new chat, a card to the
     assert.match(await page.locator('#foot').innerText(), /라이언/);
     // The room was on screen with an unread message: the read position moved.
     await page.waitForFunction(() => window.__fake.calls.some((c) => c.tool === 'conversation_mark_read'));
-    // Every read is a watch at the 30-second floor; no write is watched.
+    // Every read through a read-only public tool is a watch at the 30-second floor; no write tool is watched —
+    // list_notifications runs through execute_edit (MCP 7), so the alerts tab reads it with plain calls.
     const watched = await fake(() => window.__fake.calls.filter((c) => c.watch).map((c) => [c.tool, c.watch.refetchInterval]));
-    assert.deepEqual(watched.map(([t]) => t).sort(), ['conversation_get_messages', 'conversation_list', 'get_my_work_summary', 'list_notifications']);
+    assert.deepEqual(watched.map(([t]) => t).sort(), ['conversation_get_messages', 'conversation_list', 'get_my_work_summary']);
+    assert.ok(await fake(() => window.__fake.calls.some((c) => !c.watch && c.tool === 'list_notifications')));
     assert.ok(watched.every(([, ms]) => ms === 30_000));
     await noOverflow('room');
 

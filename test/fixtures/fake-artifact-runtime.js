@@ -131,7 +131,8 @@
       return { results: items.map((it) => ({ id: it.id, ok: true })) };
     },
   };
-  const READ_ONLY = new Set(['identity_get_self', 'conversation_list', 'conversation_get_messages', 'get_my_work_summary', 'list_notifications', 'open_ainecto_panel']);
+  // the server's public tools that declare readOnlyHint (MCP 7): only these may be watched
+  const READ_ONLY_PUBLIC = new Set(['search', 'execute_read', 'open_ainecto_panel']);
 
   // Send controls for the test: hold the answer to conversation_send (stored at once, answered on release),
   // or fail the next sends before they are stored (server_unavailable).
@@ -158,7 +159,7 @@
 
   const mcp = Object.freeze({
     // the server's public tool list after MCP 7 — operations run through execute_* (unwrap below)
-    listTools: async () => ({ servers: [{ server: 'AiNecto dev', authStatus: 'connected', tools: ['search', 'execute_read', 'execute_edit', 'execute_collaborate', 'execute_replace_remove', 'execute_access', 'execute_publish', 'open_ainecto_panel'].map((name) => ({ name, description: '' })) }] }),
+    listTools: async () => ({ servers: [{ server: 'AiNecto dev', authStatus: 'connected', tools: ['search', 'execute_read', 'execute_edit', 'execute_collaborate', 'execute_replace_remove', 'execute_access', 'execute_publish', 'open_ainecto_panel'].map((name) => ({ name, description: '', annotations: { readOnlyHint: READ_ONLY_PUBLIC.has(name) } })) }] }),
     callTool: async (server, tool, input, opts) => {
       [tool, input] = unwrap(tool, input);
       calls.push({ tool, input, opts: opts ?? null, at: Date.now() });
@@ -169,12 +170,13 @@
       return run(tool, input);
     },
     watchTool: (server, tool, input, handler, opts) => {
+      // the runtime refuses to watch a declared write — judged on the public tool sent (its readOnlyHint), not the operation
+      const sent = tool;
       [tool, input] = unwrap(tool, input);
-      calls.push({ tool, input, watch: opts ?? null });
+      calls.push({ tool, input, watch: opts ?? null, sent });
       const w = { tool, input, handler, live: true };
-      if (!READ_ONLY.has(tool)) {
-        // the runtime refuses to watch a declared write
-        setTimeout(() => handler({ type: 'error', error: { code: 'bad_request', message: `watch of a write: ${tool}` } }), 0);
+      if (!READ_ONLY_PUBLIC.has(sent)) {
+        setTimeout(() => handler({ type: 'error', error: { code: 'bad_request', message: `watch of a write: ${sent}` } }), 0);
         return () => {};
       }
       watches.push(w);

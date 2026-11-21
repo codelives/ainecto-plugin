@@ -47,6 +47,15 @@ export function pickConnector(servers) {
   return hit ? hit.server : null;
 }
 
+/**
+ * Which of the connector's tools the runtime may watch: the ones it lists as read-only (the tool's own readOnlyHint).
+ * The runtime refuses to watch a declared write, and a tool listed without the hint is treated as a write.
+ */
+export function watchable(tools) {
+  const readOnly = new Set((tools ?? []).filter((t) => t?.annotations?.readOnlyHint === true).map((t) => t.name));
+  return (name) => readOnly.has(name);
+}
+
 /** canSendToClaudeSession answers that let «AI에게» through. Each takes a {deliver: 'send'}; where one cannot ask
  *  the viewer (a browser that cannot prove the click, or the platform has it off) it is `claude_unavailable` and the
  *  same press stages instead (room.d.ts CanSendToClaudeSession). */
@@ -163,6 +172,7 @@ export function createArtifactHost(claude, { projectUuid = null, version = null 
       }
       server = pickConnector(listed?.servers);
       if (!server) throw new Error('AiNecto 커넥터를 찾지 못했습니다. Claude 설정 › 커넥터에서 연결하세요');
+      host.canWatch = watchable(listed.servers.find((s) => s?.server === server)?.tools);
       if (typeof mcp.watchTool === 'function') {
         host.watch = (name, args, onEvent) =>
           mcp.watchTool(server, name, args, (ev) => onEvent(ev.type === 'error' ? { error: mcpError(ev.error, server) } : { result: ev.result }), {

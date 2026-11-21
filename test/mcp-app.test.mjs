@@ -24,7 +24,7 @@ import {
 import { APP_PROTOCOL_VERSION, createBridge, initializeParams } from '../mcp-app/bridge.js';
 import { PANEL_OPERATIONS, PANEL_TOOLS } from '../mcp-app/panel.js';
 import { OPERATION_TOOLS, wireCall } from '../plugins/ainecto-panel/hooks/inbox.js';
-import { createArtifactHost, mcpError, pickConnector, roomBridge } from '../mcp-app/artifact-host.js';
+import { createArtifactHost, mcpError, pickConnector, roomBridge, watchable } from '../mcp-app/artifact-host.js';
 import { contextForClaude, contextText, panelUpdate, POLL_MS, updateRequestForClaude } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 test('the committed panel HTML is a fresh build of its sources (npm run build:app)', () => {
@@ -134,7 +134,8 @@ test('artifact host on the public tool list: connects to AiNecto and the first s
   const mcp = {
     listTools: async () => ({ servers: [
       { server: 'Slack', authStatus: 'connected', tools: [{ name: 'search' }] },
-      { server: 'AiNecto', authStatus: 'connected', tools: PUBLIC_TOOLS.map((name) => ({ name })) },
+      { server: 'AiNecto', authStatus: 'connected', tools: PUBLIC_TOOLS.map((name) => ({ name,
+        annotations: { readOnlyHint: ['search', 'execute_read', 'open_ainecto_panel'].includes(name) } })) },
     ] }),
     callTool: async (server, tool, input) => {
       calls.push([server, tool, input]);
@@ -148,6 +149,12 @@ test('artifact host on the public tool list: connects to AiNecto and the first s
   const wire = wireCall('get_my_work_summary', {});
   assert.deepEqual(await host.callTool(wire.name, wire.args), SUMMARY);
   assert.deepEqual(calls, [['AiNecto', 'execute_read', { operation: 'get_my_work_summary', args: {} }]]);
+  // watch only what the connector lists as read-only: the alerts tab (list_notifications → execute_edit) reads by plain calls
+  assert.equal(host.canWatch('execute_read'), true);
+  assert.equal(host.canWatch('open_ainecto_panel'), true);
+  assert.equal(host.canWatch('execute_edit'), false);
+  assert.equal(host.canWatch(wireCall('list_notifications', {}).name), false);
+  assert.equal(watchable([{ name: 'execute_read' }])('execute_read'), false, 'no hint listed = treated as a write');
   // only the artifact's allowed four (the published manifest) still identify the server
   const four = { ...mcp, listTools: async () => ({ servers: [{ server: 'AiNecto', authStatus: 'connected',
     tools: PANEL_TOOLS.map((name) => ({ name })) }] }) };

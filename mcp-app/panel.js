@@ -161,10 +161,12 @@ function subscribe(name, args, onData, onError) {
       onData(parsed.data);
     } else onError(parsed);
   };
-  if (host.watch) {
+  const wire = wireCall(name, args);
+  // A host watches only a public tool it lists as read-only (canWatch, from the tool's own readOnlyHint): a write tool
+  // such as execute_edit (list_notifications moves this connection's delivery position) is read by plain calls instead.
+  if (host.watch && host.canWatch?.(wire.name)) {
     const id = ++callSeq;
     console.info(`[ainecto-panel] ⇢ #${id} watch ${name} args=${Object.keys(args ?? {}).join(',')}`);
-    const wire = wireCall(name, args);
     return host.watch(wire.name, wire.args, (ev) => {
       if (ev.error) {
         console.info(`[ainecto-panel] ⇠ #${id} ${name} error ${ev.error.code ?? ''}: ${ev.error.message}`);
@@ -197,13 +199,15 @@ function subscribe(name, args, onData, onError) {
   };
 }
 
-/** Reads a subscribed call again now. */
+/** Reads a subscribed call again now — its own plain read when it is not watched, else the host's refresh. */
 function refresh(name, args) {
+  const own = reads.get(keyOf(name, args));
+  if (own) return own.read();
   if (host.watch && host.refresh) {
     const wire = wireCall(name, args);
     return host.refresh(wire.name, wire.args).catch(() => {});
   }
-  return reads.get(keyOf(name, args))?.read();
+  return undefined;
 }
 
 const listArgs = () => ({ projectUuid });

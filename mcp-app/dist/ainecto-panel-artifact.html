@@ -182,7 +182,7 @@
 
   <div id="foot" class="foot"></div>
 </div>
-<script type="application/json" id="ainecto-project">{"projectUuid":null}</script><script type="application/json" id="ainecto-panel-version">"6b3969db3dee"</script>
+<script type="application/json" id="ainecto-project">{"projectUuid":null}</script><script type="application/json" id="ainecto-panel-version">"ba82d65f5355"</script>
 <script>
 'use strict';
 // ── plugins/ainecto-panel/hooks/inbox.js ──
@@ -1143,10 +1143,12 @@ function subscribe(name, args, onData, onError) {
       onData(parsed.data);
     } else onError(parsed);
   };
-  if (host.watch) {
+  const wire = wireCall(name, args);
+  // A host watches only a public tool it lists as read-only (canWatch, from the tool's own readOnlyHint): a write tool
+  // such as execute_edit (list_notifications moves this connection's delivery position) is read by plain calls instead.
+  if (host.watch && host.canWatch?.(wire.name)) {
     const id = ++callSeq;
     console.info(`[ainecto-panel] ⇢ #${id} watch ${name} args=${Object.keys(args ?? {}).join(',')}`);
-    const wire = wireCall(name, args);
     return host.watch(wire.name, wire.args, (ev) => {
       if (ev.error) {
         console.info(`[ainecto-panel] ⇠ #${id} ${name} error ${ev.error.code ?? ''}: ${ev.error.message}`);
@@ -1179,13 +1181,15 @@ function subscribe(name, args, onData, onError) {
   };
 }
 
-/** Reads a subscribed call again now. */
+/** Reads a subscribed call again now — its own plain read when it is not watched, else the host's refresh. */
 function refresh(name, args) {
+  const own = reads.get(keyOf(name, args));
+  if (own) return own.read();
   if (host.watch && host.refresh) {
     const wire = wireCall(name, args);
     return host.refresh(wire.name, wire.args).catch(() => {});
   }
-  return reads.get(keyOf(name, args))?.read();
+  return undefined;
 }
 
 const listArgs = () => ({ projectUuid });
@@ -2028,6 +2032,15 @@ function pickConnector(servers) {
   return hit ? hit.server : null;
 }
 
+/**
+ * Which of the connector's tools the runtime may watch: the ones it lists as read-only (the tool's own readOnlyHint).
+ * The runtime refuses to watch a declared write, and a tool listed without the hint is treated as a write.
+ */
+function watchable(tools) {
+  const readOnly = new Set((tools ?? []).filter((t) => t?.annotations?.readOnlyHint === true).map((t) => t.name));
+  return (name) => readOnly.has(name);
+}
+
 /** canSendToClaudeSession answers that let «AI에게» through. Each takes a {deliver: 'send'}; where one cannot ask
  *  the viewer (a browser that cannot prove the click, or the platform has it off) it is `claude_unavailable` and the
  *  same press stages instead (room.d.ts CanSendToClaudeSession). */
@@ -2144,6 +2157,7 @@ function createArtifactHost(claude, { projectUuid = null, version = null } = {})
       }
       server = pickConnector(listed?.servers);
       if (!server) throw new Error('AiNecto 커넥터를 찾지 못했습니다. Claude 설정 › 커넥터에서 연결하세요');
+      host.canWatch = watchable(listed.servers.find((s) => s?.server === server)?.tools);
       if (typeof mcp.watchTool === 'function') {
         host.watch = (name, args, onEvent) =>
           mcp.watchTool(server, name, args, (ev) => onEvent(ev.type === 'error' ? { error: mcpError(ev.error, server) } : { result: ev.result }), {
@@ -2228,7 +2242,7 @@ function createArtifactHost(claude, { projectUuid = null, version = null } = {})
   return host;
 }
 
-return { mcpError, pickConnector, roomBridge, createArtifactHost };
+return { mcpError, pickConnector, watchable, roomBridge, createArtifactHost };
 })();
 
 // ── mcp-app/artifact.js ──
