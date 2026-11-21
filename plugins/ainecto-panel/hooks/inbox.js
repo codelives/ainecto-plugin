@@ -560,6 +560,7 @@ const CARD_HEADS = {
   QUESTION_ANSWERED: ['질문 답변', '?', 'comment'],
   QUESTION_RESOLVED: ['질문 해결', '✓', 'comment'],
   CONVERSATION_MESSAGE: ['개인 챗', '✉', null],
+  CONVERSATION_MENTIONED: ['Room 멘션', '@', null],
 };
 
 /**
@@ -596,7 +597,7 @@ export function alertCard(item) {
     unread: !item.humanRead,
     ask: askKey,
     button: askKey ? ASK_BUTTON : null,
-    openChat: kind === 'CONVERSATION_MESSAGE' && item.target?.uuid ? String(item.target.uuid) : null,
+    openChat: (kind === 'CONVERSATION_MESSAGE' || kind === 'CONVERSATION_MENTIONED') && item.target?.uuid ? String(item.target.uuid) : null,
     item,
   };
 }

@@ -40,6 +40,8 @@
     ],
   };
   const calls = [];
+  // MCP 7: the panel sends execute_* {operation, args}; the fake answers and records the operation (as the server runs it)
+  const unwrap = (tool, input) => (String(tool).startsWith('execute_') ? [input?.operation, input?.args ?? {}] : [tool, input]);
   const emitted = [];
   const presence = [];
   const sentToClaude = [];
@@ -157,6 +159,7 @@
   const mcp = Object.freeze({
     listTools: async () => ({ servers: [{ server: 'AiNecto dev', authStatus: 'connected', tools: Object.keys(tools).map((name) => ({ name, description: '' })) }] }),
     callTool: async (server, tool, input, opts) => {
+      [tool, input] = unwrap(tool, input);
       calls.push({ tool, input, opts: opts ?? null, at: Date.now() });
       if (tool === 'conversation_get_messages' && sendControl.readFailure) {
         const code = sendControl.readFailure;
@@ -165,6 +168,7 @@
       return run(tool, input);
     },
     watchTool: (server, tool, input, handler, opts) => {
+      [tool, input] = unwrap(tool, input);
       calls.push({ tool, input, watch: opts ?? null });
       const w = { tool, input, handler, live: true };
       if (!READ_ONLY.has(tool)) {
@@ -179,6 +183,7 @@
       };
     },
     invalidate: async (server, tool, input) => {
+      [tool, input] = unwrap(tool, input);
       calls.push({ invalidate: tool, input });
       for (const w of watches) if (w.live && w.tool === tool && (input === undefined || same(w.input, input))) runWatch(w);
     },

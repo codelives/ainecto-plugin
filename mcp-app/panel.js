@@ -70,20 +70,23 @@ import {
 } from '../plugins/ainecto-panel/hooks/inbox.js';
 
 /**
- * Every AiNecto tool this panel calls. A Claude artifact must name exactly these in its `mcp` manifest
- * (test/mcp-app.test.mjs checks the list against the calls below).
+ * Every AiNecto operation this panel calls → the public tool it runs through (MCP 7: the server lists only search, the six
+ * execute_* tools and open_ainecto_panel). null = called by its own name (open_ainecto_panel stays a public tool so the
+ * host can show this panel). The server's table (ainecto-api mcp/operation-executors.json) is the source of truth;
+ * ainecto-api's McpAppResourcesTest checks this literal against it, and test/mcp-app.test.mjs checks the keys against the
+ * calls below.
  */
-export const PANEL_TOOLS = [
-  'identity_get_self',
-  'conversation_list',
-  'conversation_get_messages',
-  'conversation_send',
-  'conversation_mark_read',
-  'get_my_work_summary',
-  'list_notifications',
-  'mark_notifications_read',
-  'open_ainecto_panel',
-];
+export const PANEL_OPERATIONS = {"identity_get_self":"execute_read","conversation_list":"execute_read","conversation_get_messages":"execute_read","conversation_send":"execute_collaborate","conversation_mark_read":"execute_collaborate","get_my_work_summary":"execute_read","list_notifications":"execute_edit","mark_notifications_read":"execute_edit","open_ainecto_panel":null};
+
+/** The public tools this panel sends on the wire. A Claude artifact must name exactly these in its `mcp` manifest. */
+export const PANEL_TOOLS = [...new Set(Object.entries(PANEL_OPERATIONS).map(([operation, tool]) => tool ?? operation))];
+
+/** Pure: an operation call → what goes on the wire ({ name, args }) — execute_* carry { operation, args }. */
+export function wireCall(operation, args) {
+  const tool = PANEL_OPERATIONS[operation];
+  if (tool === undefined) throw new Error(`panel operation not declared in PANEL_OPERATIONS: ${operation}`);
+  return tool === null ? { name: operation, args: args ?? {} } : { name: tool, args: { operation, args: args ?? {} } };
+}
 
 // ── State. Lost when the host tears the panel down; the next open reads the server again. ──
 let host = null;
@@ -136,7 +139,8 @@ async function callTool(name, args) {
   console.info(`[ainecto-panel] → #${id} ${name} args=${Object.keys(args ?? {}).join(',')}`);
   let parsed;
   try {
-    parsed = parseToolResult(await host.callTool(name, args ?? {}));
+    const wire = wireCall(name, args);
+    parsed = parseToolResult(await host.callTool(wire.name, wire.args));
   } catch (err) {
     parsed = { ok: false, error: String(err?.message ?? err), code: err?.code, retryable: err?.retryable };
   }
@@ -159,7 +163,8 @@ function subscribe(name, args, onData, onError) {
   if (host.watch) {
     const id = ++callSeq;
     console.info(`[ainecto-panel] ⇢ #${id} watch ${name} args=${Object.keys(args ?? {}).join(',')}`);
-    return host.watch(name, args, (ev) => {
+    const wire = wireCall(name, args);
+    return host.watch(wire.name, wire.args, (ev) => {
       if (ev.error) {
         console.info(`[ainecto-panel] ⇠ #${id} ${name} error ${ev.error.code ?? ''}: ${ev.error.message}`);
         onError({ ok: false, error: String(ev.error.message ?? ev.error), code: ev.error.code, retryable: ev.error.retryable });
@@ -193,7 +198,10 @@ function subscribe(name, args, onData, onError) {
 
 /** Reads a subscribed call again now. */
 function refresh(name, args) {
-  if (host.watch && host.refresh) return host.refresh(name, args).catch(() => {});
+  if (host.watch && host.refresh) {
+    const wire = wireCall(name, args);
+    return host.refresh(wire.name, wire.args).catch(() => {});
+  }
   return reads.get(keyOf(name, args))?.read();
 }
 

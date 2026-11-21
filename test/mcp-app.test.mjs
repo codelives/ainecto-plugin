@@ -22,7 +22,7 @@ import {
   versionSlot,
 } from '../scripts/build-mcp-app.mjs';
 import { APP_PROTOCOL_VERSION, createBridge, initializeParams } from '../mcp-app/bridge.js';
-import { PANEL_TOOLS } from '../mcp-app/panel.js';
+import { PANEL_OPERATIONS, PANEL_TOOLS, wireCall } from '../mcp-app/panel.js';
 import { createArtifactHost, mcpError, pickConnector, roomBridge } from '../mcp-app/artifact-host.js';
 import { contextForClaude, contextText, panelUpdate, POLL_MS, updateRequestForClaude } from '../plugins/ainecto-panel/hooks/inbox.js';
 
@@ -99,10 +99,19 @@ test('ui/initialize params follow McpUiInitializeRequest', () => {
   assert.equal(APP_PROTOCOL_VERSION, '2026-01-26');
 });
 
-test('PANEL_TOOLS names exactly the tools panel.js calls (the artifact manifest is built from it)', () => {
+test('PANEL_OPERATIONS names exactly the operations panel.js calls; PANEL_TOOLS is what goes on the wire (the artifact manifest is built from it)', () => {
   const source = readFileSync(join(ROOT, 'mcp-app/panel.js'), 'utf8');
   const called = [...new Set([...source.matchAll(/(?:callTool|subscribe)\('([a-z_]+)'/g)].map((m) => m[1]))].sort();
-  assert.deepEqual([...PANEL_TOOLS].sort(), called);
+  assert.deepEqual(Object.keys(PANEL_OPERATIONS).sort(), called);
+  assert.deepEqual([...PANEL_TOOLS].sort(), ['execute_collaborate', 'execute_edit', 'execute_read', 'open_ainecto_panel']);
+});
+
+test('wireCall: an operation goes through its execute_* tool as {operation, args}; open_ainecto_panel keeps its own name', () => {
+  assert.deepEqual(wireCall('conversation_send', { body: 'x' }),
+    { name: 'execute_collaborate', args: { operation: 'conversation_send', args: { body: 'x' } } });
+  assert.deepEqual(wireCall('identity_get_self'), { name: 'execute_read', args: { operation: 'identity_get_self', args: {} } });
+  assert.deepEqual(wireCall('open_ainecto_panel', { projectUuid: 'p' }), { name: 'open_ainecto_panel', args: { projectUuid: 'p' } });
+  assert.throws(() => wireCall('delete_documents', {}), /not declared/);
 });
 
 test('the artifact page is a page body with the same data rules, no MCP Apps bridge and no network', () => {

@@ -4,14 +4,9 @@
       {
         "server": "",
         "tools": [
-          "identity_get_self",
-          "conversation_list",
-          "conversation_get_messages",
-          "conversation_send",
-          "conversation_mark_read",
-          "get_my_work_summary",
-          "list_notifications",
-          "mark_notifications_read",
+          "execute_read",
+          "execute_collaborate",
+          "execute_edit",
           "open_ainecto_panel"
         ]
       }
